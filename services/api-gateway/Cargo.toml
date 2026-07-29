@@ -14,3 +14,4 @@ errors = { path = "../../crates/errors"}
 async-trait.workspace=true
 sqlx.workspace = true
 chrono.workspace = true
+database = { path = "../../crates/database" }

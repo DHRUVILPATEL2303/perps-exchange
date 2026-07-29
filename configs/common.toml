@@ -6,6 +6,7 @@ port = 5432
 username = "postgres"
 password = "postgres"
 database = "perps_exchange"
+auto_migrate = true
 
 [redis]
 host = "localhost"

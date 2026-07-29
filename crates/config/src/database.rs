@@ -7,6 +7,8 @@ pub struct DatabaseConfig {
     pub username: String,
     pub password: String,
     pub database: String,
+    pub auto_migrate: bool,
+
 }
 
 
