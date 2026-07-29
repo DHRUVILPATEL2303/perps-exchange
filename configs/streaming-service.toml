@@ -1,0 +1,9 @@
+app_name = "Streaming Service"
+
+[server]
+host = "127.0.0.1"
+port = 8084
+
+[grpc]
+host = "127.0.0.1"
+port = 50054

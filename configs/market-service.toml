@@ -1,0 +1,11 @@
+app_name = "Market Service"
+
+[server]
+host = "127.0.0.1"
+port = 8081
+
+[grpc]
+host = "127.0.0.1"
+port = 50051
+
+[database]

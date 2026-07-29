@@ -1,0 +1,21 @@
+[package]
+name = "account-service"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio.workspace = true
+actix-web.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+
+
+telemetry = { path = "../../crates/telemetry" }
+errors = { path = "../../crates/errors" }
+common = { path = "../../crates/common" }
+config = { path = "../../crates/config" }

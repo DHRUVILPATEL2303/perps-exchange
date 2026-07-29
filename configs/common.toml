@@ -1,0 +1,15 @@
+environment = "development"
+
+[database]
+host = "localhost"
+port = 5432
+username = "postgres"
+password = "postgres"
+database = "perps_exchange"
+
+[redis]
+host = "localhost"
+port = 6379
+
+[kafka]
+brokers = ["localhost:9092"]

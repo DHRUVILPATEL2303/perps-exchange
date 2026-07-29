@@ -11,3 +11,6 @@ serde.workspace=true
 telemetry = { path = "../../crates/telemetry" }
 config = { path = "../../crates/config" }
 errors = { path = "../../crates/errors"}
+async-trait.workspace=true
+sqlx.workspace = true
+chrono.workspace = true

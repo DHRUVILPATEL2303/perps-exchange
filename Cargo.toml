@@ -12,6 +12,8 @@ members = [
 
     # services
     "services/api-gateway",
+    "services/account-service",
+    "services/market-service",
 ]
 
 [workspace.package]
@@ -31,17 +33,22 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 thiserror = "2"
 anyhow = "1"
+async-trait = "0.1.91"
 
 uuid = { version = "1", features = ["v4", "serde"] }
 
 dotenvy = "0.15"
 
-sqlx = { version = "0.8", features = [
+sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio",
     "postgres",
+    "macros",
+    "migrate",
     "uuid",
-    "chrono"
+    "chrono",
 ] }
+
+chrono = { version = "0.4", features = ["serde"] }
 
 redis = { version = "0.32", features = ["tokio-comp"] }
 config = "0.15"
