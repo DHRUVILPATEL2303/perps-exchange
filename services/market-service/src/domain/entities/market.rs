@@ -1,8 +1,9 @@
 use chrono::DateTime;
 use chrono::Utc;
 use rust_decimal::Decimal;
+use sqlx::prelude::FromRow;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,FromRow)]
 pub struct Market {
     pub id: uuid::Uuid,
     pub symbol: String,
@@ -17,11 +18,4 @@ pub struct Market {
     pub created_at: DateTime<Utc>,
 
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug,Clone)]
-pub enum MarketStatus{
-    Active ,
-    Paused ,
-    Disabled
 }

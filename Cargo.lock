@@ -260,6 +260,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "api-gateway"
 version = "0.1.0"
 dependencies = [
@@ -840,6 +846,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "serde",
+ "sqlx",
  "thiserror",
 ]
 
@@ -1450,6 +1457,8 @@ name = "market-service"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "anyhow",
+ "async-trait",
  "chrono",
  "common",
  "config 0.1.0",
@@ -1460,6 +1469,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "telemetry",
+ "thiserror",
  "tokio",
  "tracing",
  "uuid",
@@ -2293,6 +2303,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "percent-encoding",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sha2",
@@ -2375,6 +2386,7 @@ dependencies = [
  "percent-encoding",
  "rand 0.8.7",
  "rsa",
+ "rust_decimal",
  "serde",
  "sha1 0.10.7",
  "sha2",
@@ -2414,6 +2426,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "rand 0.8.7",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sha2",

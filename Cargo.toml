@@ -45,8 +45,11 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
     "migrate",
     "uuid",
+    "rust_decimal",
     "chrono",
 ] }
+
+
 
 chrono = { version = "0.4", features = ["serde"] }
 

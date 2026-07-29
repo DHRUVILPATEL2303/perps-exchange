@@ -15,9 +15,12 @@ uuid.workspace = true
 chrono.workspace = true
 sqlx.workspace = true
 rust_decimal.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
 
 telemetry = { path = "../../crates/telemetry" }
 errors = { path = "../../crates/errors" }
 common = { path = "../../crates/common" }
 config = { path = "../../crates/config" }
 database = { path = "../../crates/database" }
+thiserror.workspace = true

@@ -7,3 +7,4 @@ edition.workspace = true
 thiserror.workspace=true
 actix-web.workspace=true
 serde.workspace=true
+sqlx.workspace=true

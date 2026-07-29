@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{application::services::health_service::HealthService, domain::repositories::health_repository::HealthRepository, infrastructure::repositories::in_memory_health_repository::InMemoryHealthRepository, presentation::router::router::configure_routes, state::AppState};
+use crate::{application::services::health_service::HealthService,infrastructure::repositories::in_memory_health_repository::InMemoryHealthRepository, presentation::router::router::configure_routes, state::AppState};
 use actix_web::{App, HttpServer};
 
 
