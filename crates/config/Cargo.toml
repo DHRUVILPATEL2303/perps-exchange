@@ -1,0 +1,9 @@
+[package]
+name = "config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+config.workspace=true
+serde.workspace=true
+dotenvy.workspace=true

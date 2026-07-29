@@ -1,0 +1,9 @@
+[package]
+name = "errors"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace=true
+actix-web.workspace=true
+serde.workspace=true

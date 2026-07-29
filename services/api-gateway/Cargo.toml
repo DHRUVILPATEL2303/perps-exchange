@@ -1,0 +1,13 @@
+[package]
+name = "api-gateway"
+version.workspace=true
+edition.workspace=true
+
+[dependencies]
+actix-web.workspace=true
+tokio.workspace=true
+tracing.workspace=true
+serde.workspace=true
+telemetry = { path = "../../crates/telemetry" }
+config = { path = "../../crates/config" }
+errors = { path = "../../crates/errors"}

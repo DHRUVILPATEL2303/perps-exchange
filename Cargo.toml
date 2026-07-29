@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+
+members = [
+    # shared crates
+    "crates/common",
+    "crates/config",
+    "crates/errors",
+    "crates/telemetry",
+    "crates/types",
+    "crates/utils",
+
+    # services
+    "services/api-gateway",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+authors = ["Dhruvil Patel"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+actix-web = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+thiserror = "2"
+anyhow = "1"
+
+uuid = { version = "1", features = ["v4", "serde"] }
+
+dotenvy = "0.15"
+
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "postgres",
+    "uuid",
+    "chrono"
+] }
+
+redis = { version = "0.32", features = ["tokio-comp"] }
+config = "0.15"
