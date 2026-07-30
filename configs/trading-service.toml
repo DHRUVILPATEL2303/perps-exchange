@@ -7,3 +7,5 @@ port = 8083
 [grpc]
 host = "127.0.0.1"
 port = 50053
+
+[database]
