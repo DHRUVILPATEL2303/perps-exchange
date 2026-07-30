@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS trades (
+    id UUID PRIMARY KEY,
+    order_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    side VARCHAR(16) NOT NULL,
+    price NUMERIC(38, 18) NOT NULL,
+    quantity NUMERIC(38, 18) NOT NULL,
+    fee NUMERIC(38, 18) NOT NULL,
+    executed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

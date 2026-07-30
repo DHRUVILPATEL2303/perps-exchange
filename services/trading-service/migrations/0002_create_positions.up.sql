@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS positions (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    side VARCHAR(16) NOT NULL,
+    size NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    entry_price NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    margin NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    leverage INT NOT NULL DEFAULT 1,
+    liquidation_price NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    unrealized_pnl NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    realized_pnl NUMERIC(38, 18) NOT NULL DEFAULT 0,
+    margin_mode VARCHAR(16) NOT NULL DEFAULT 'ISOLATED',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_symbol_side ON positions (user_id, symbol, side);

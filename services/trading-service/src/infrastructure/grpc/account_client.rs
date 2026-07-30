@@ -1,0 +1,56 @@
+use anyhow::Result;
+use proto::account::{
+    account_service_client::AccountServiceClient,
+    GetBalanceRequest, GetBalanceResponse,
+    LockMarginRequest, LockMarginResponse,
+    ReleaseMarginRequest, ReleaseMarginResponse,
+    AdjustMarginRequest, AdjustMarginResponse,
+};
+use tonic::transport::Channel;
+
+pub struct AccountGrpcClient {
+    client: AccountServiceClient<Channel>,
+}
+
+impl AccountGrpcClient {
+    pub async fn connect(endpoint: String) -> Result<Self> {
+        let client = AccountServiceClient::connect(endpoint).await?;
+        Ok(Self { client })
+    }
+
+    pub async fn get_balance(&mut self, user_id: String, asset: String) -> Result<GetBalanceResponse> {
+        let request = tonic::Request::new(GetBalanceRequest { user_id, asset });
+        let response = self.client.get_balance(request).await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn lock_margin(&mut self, user_id: String, amount: String, reference_id: String) -> Result<LockMarginResponse> {
+        let request = tonic::Request::new(LockMarginRequest {
+            user_id,
+            amount,
+            reference_id,
+        });
+        let response = self.client.lock_margin(request).await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn release_margin(&mut self, user_id: String, amount: String, reference_id: String) -> Result<ReleaseMarginResponse> {
+        let request = tonic::Request::new(ReleaseMarginRequest {
+            user_id,
+            amount,
+            reference_id,
+        });
+        let response = self.client.release_margin(request).await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn adjust_margin(&mut self, user_id: String, amount: String, adjustment_type: String) -> Result<AdjustMarginResponse> {
+        let request = tonic::Request::new(AdjustMarginRequest {
+            user_id,
+            amount,
+            adjustment_type,
+        });
+        let response = self.client.adjust_margin(request).await?;
+        Ok(response.into_inner())
+    }
+}
