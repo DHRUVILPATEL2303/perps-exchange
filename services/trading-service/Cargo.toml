@@ -10,19 +10,18 @@ tokio.workspace = true
 actix-web.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
-tonic.workspace = true
-prost.workspace = true
-
-config.workspace = true
-database.workspace = true
-proto.workspace = true
-
-sqlx.workspace = true
-
+tracing.workspace = true
 uuid.workspace = true
 chrono.workspace = true
-
-thiserror.workspace = true
+sqlx.workspace = true
+rust_decimal.workspace = true
+async-trait.workspace = true
 anyhow.workspace = true
-tracing.workspace = true
+tonic.workspace = true
+telemetry = { path = "../../crates/telemetry" }
+errors = { path = "../../crates/errors" }
+common = { path = "../../crates/common" }
+config = { path = "../../crates/config" }
+proto = { path = "../../crates/proto" }
+database = { path = "../../crates/database" }
+thiserror.workspace = true
