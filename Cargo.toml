@@ -65,4 +65,5 @@ prometheus = "0.13"
 
 #kafka 
 rdkafka = { version = "0.36", features = ["tokio"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+

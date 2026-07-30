@@ -3,7 +3,9 @@ pub mod database;
 pub mod grpc;
 pub mod loader;
 pub mod server;
-
+pub mod kafka;
+pub mod redis;
+pub mod websocket;
 pub use app::AppConfig;
 pub use database::DatabaseConfig;
 pub use grpc::GrpcConfig;

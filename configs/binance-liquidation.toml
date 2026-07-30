@@ -1,0 +1,12 @@
+app_name = "Binance Liquidation Service"
+
+[server]
+host = "127.0.0.1"
+port = 8084
+
+[grpc]
+host = "127.0.0.1"
+port = 50054
+
+[websocket]
+url = "wss://fstream.binance.com/ws/!forceOrder@arr"
