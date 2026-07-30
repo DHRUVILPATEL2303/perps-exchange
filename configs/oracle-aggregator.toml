@@ -1,0 +1,18 @@
+app_name = "Oracle Aggregator Service"
+
+[server]
+host = "127.0.0.1"
+port = 8085
+
+
+[grpc]
+host = "127.0.0.1"
+port = 50055
+
+[kafka]
+host = "127.0.0.1"
+port = 9092
+
+[database]
+host = "127.0.0.1"
+port = 5432

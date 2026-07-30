@@ -2105,6 +2105,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "oracle-aggregator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "config 0.1.0",
+ "errors",
+ "futures-util",
+ "rdkafka",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "telemetry",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
 name = "ordered-multimap"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

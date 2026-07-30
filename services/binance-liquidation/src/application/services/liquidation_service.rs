@@ -57,6 +57,7 @@ impl ListenerService {
                         match msg {
                             Ok(message) => {
                                 if let Ok(text) = message.to_text() {
+                                 
                                     if let Ok(parsed) = serde_json::from_str::<BinanceWSMessage>(text) {
                                         let liquidation = Liquidation {
                                             symbol: parsed.order.symbol,
