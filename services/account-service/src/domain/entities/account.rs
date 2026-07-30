@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone,sqlx::FromRow)]
+#[derive(Debug, Clone,sqlx::FromRow,Serialize,Deserialize)]
 pub struct Account {
     pub id: Uuid,
     pub user_id: Uuid,
