@@ -1,9 +1,9 @@
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Quantity(pub Decimal);
+pub struct Price(pub Decimal);
 
-impl Quantity {
+impl Price {
     pub fn new(value: Decimal) -> Self {
         Self(value)
     }
