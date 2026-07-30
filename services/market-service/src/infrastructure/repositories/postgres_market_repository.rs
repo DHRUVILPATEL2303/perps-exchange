@@ -119,39 +119,34 @@ impl MarketRepository for PostgresMarketRepository {
     async fn update(
         &self,
         market: Market,
-    ) -> Result<(), RepositoryError> {
-        sqlx::query(
+    ) -> Result<Market, RepositoryError> {
+    
+        let updated = sqlx::query_as::<_, Market>(
             r#"
             UPDATE markets
             SET
-                symbol = $2,
-                base_asset = $3,
-                quote_asset = $4,
-                tick_size = $5,
-                lot_size = $6,
-                min_qty = $7,
-                max_leverage = $8,
-                status = $9,
-                updated_at = $10
-            WHERE id = $1
+                tick_size = $1,
+                lot_size = $2,
+                min_qty = $3,
+                max_leverage = $4,
+                status = $5,
+                updated_at = $6
+            WHERE symbol = $7
+            RETURNING *
             "#,
         )
-        .bind(market.id)
-        .bind(market.symbol)
-        .bind(market.base_asset)
-        .bind(market.quote_asset)
         .bind(market.tick_size)
         .bind(market.lot_size)
         .bind(market.min_qty)
         .bind(market.max_leverage)
-        .bind(market.status)
+        .bind(&market.status)
         .bind(market.updated_at)
-        .execute(&self.pool)
+        .bind(&market.symbol)
+        .fetch_one(&self.pool)
         .await?;
-
-        Ok(())
+    
+        Ok(updated)
     }
-
     async fn delete(
         &self,
         id: Uuid,

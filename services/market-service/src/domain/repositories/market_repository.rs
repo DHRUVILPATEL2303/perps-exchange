@@ -28,7 +28,7 @@ pub trait MarketRepository: Send + Sync {
     async fn update(
         &self,
         market: Market,
-    ) -> Result<(), RepositoryError>;
+    ) -> Result<Market, RepositoryError>;
 
     async fn delete(
         &self,

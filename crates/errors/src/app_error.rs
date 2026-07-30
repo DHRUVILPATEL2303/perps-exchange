@@ -55,6 +55,15 @@ pub enum ServiceError {
 
     #[error("Invalid leverage")]
     InvalidLeverage,
+
+    #[error("Market already exists")]
+    MarketAlreadyExists,
+
+    #[error("Invalid status")]
+    InvalidStatus,
+
+    #[error("Market not found")]
+    MarketNotFound,
 }
 
 

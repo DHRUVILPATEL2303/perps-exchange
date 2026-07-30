@@ -15,7 +15,12 @@ pub async fn run() -> Result<()> {
             .await
             .expect("Database connection failed"),
     );
-    
+    if config.database.auto_migrate {
+        sqlx::migrate!("./migrations")
+            .run(db.pool())
+            .await
+            .expect("Migration failed");
+    }
     let repository = Arc::new(
         PostgresMarketRepository::new(db.pool().clone()),
     );
