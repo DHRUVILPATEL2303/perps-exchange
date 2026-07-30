@@ -1,2 +1,2 @@
-pub mod market_client;
 pub mod mapper;
+pub mod market_client;

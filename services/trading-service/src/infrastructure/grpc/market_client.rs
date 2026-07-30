@@ -16,22 +16,19 @@ impl MarketGrpcClient {
         })
     }
 
-    pub async fn list_markets(
-        &mut self,
-    ) -> anyhow::Result<Vec<Market>> {
+    pub async fn list_markets(&mut self) -> anyhow::Result<Vec<Market>> {
         let response = self
             .client
             .list_markets(ListMarketsRequest {})
             .await?
             .into_inner();
-    
+
         let markets = response
             .markets
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()?;
-    
+
         Ok(markets)
     }
-    
 }

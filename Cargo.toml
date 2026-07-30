@@ -14,6 +14,7 @@ members = [
     "services/account-service",
     "services/market-service",
     "services/trading-service",
+    "services/binance-liquidation",
 ]
 [workspace.package]
 edition = "2024"
@@ -56,3 +57,12 @@ tonic-prost-build = "0.14"
 
 
 
+opentelemetry = { version = "0.27", features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.28"
+prometheus = "0.13"
+
+#kafka 
+rdkafka = { version = "0.36", features = ["tokio"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }

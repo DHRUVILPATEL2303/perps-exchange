@@ -1,16 +1,13 @@
 use anyhow::Result;
 
-
-pub mod state;
-pub mod bootstrap;
-pub mod infrastructure;
-pub mod domain;
 pub mod application;
-
+pub mod bootstrap;
+pub mod domain;
+pub mod infrastructure;
+pub mod state;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     let state = bootstrap::bootstrap().await?;
 
     println!(

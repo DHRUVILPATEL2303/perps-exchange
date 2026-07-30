@@ -5,9 +5,9 @@ pub mod state;
 pub use sqlx;
 pub mod application;
 pub mod domain;
+pub mod grpc;
 pub mod infrastructure;
 pub mod presentation;
-pub mod grpc;
 
 #[tokio::main]
 async fn main() -> Result<()> {

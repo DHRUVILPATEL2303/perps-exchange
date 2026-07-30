@@ -4,7 +4,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_client(true)
         .compile_protos(
             &[
-                
                 "proto/market.proto",
                 "proto/account.proto",
                 "proto/trading.proto",

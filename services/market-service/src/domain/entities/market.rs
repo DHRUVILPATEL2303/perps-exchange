@@ -3,8 +3,6 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sqlx::prelude::FromRow;
 
-
-
 #[derive(Debug, Clone, FromRow)]
 pub struct Market {
     pub id: uuid::Uuid,

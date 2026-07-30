@@ -1,7 +1,7 @@
 use actix_web::web;
 
 use crate::presentation::rest::controller::market_controller::{
-     create_market, delete_market, get_market, list_markets, update_market,
+    create_market, delete_market, get_market, list_markets, update_market,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

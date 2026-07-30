@@ -1,0 +1,16 @@
+[package]
+name = "binance-liquidation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+rdkafka = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = "0.3"
+anyhow = { workspace = true }
+tracing = { workspace = true }
+telemetry = { path = "../../crates/telemetry" }
+config = { path = "../../crates/config" }

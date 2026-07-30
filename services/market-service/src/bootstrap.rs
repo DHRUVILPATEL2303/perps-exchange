@@ -6,21 +6,18 @@ use database::manager::DatabaseManager;
 use proto::market::market_service_server::MarketServiceServer;
 use tonic::transport::Server;
 
-
 use crate::{
-    application::services::market_service::MarketService, grpc::server::MarketGrpcService, infrastructure::repositories::postgres_market_repository::PostgresMarketRepository, presentation, state::AppState,
+    application::services::market_service::MarketService, grpc::server::MarketGrpcService,
+    infrastructure::repositories::postgres_market_repository::PostgresMarketRepository,
+    presentation, state::AppState,
 };
 
 pub async fn run() -> Result<()> {
     let config = AppConfig::load("market-service").expect("Failed to Load Config");
 
-    let grpc_addr: SocketAddr = format!(
-        "{}:{}",
-        config.grpc.host,
-        config.grpc.port
-    )
-    .parse()
-    .expect("Invalid gRPC address");
+    let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
+        .parse()
+        .expect("Invalid gRPC address");
 
     let db = Arc::new(
         DatabaseManager::new(&config.database)
@@ -45,15 +42,12 @@ pub async fn run() -> Result<()> {
         .add_service(MarketServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
-
-    
     let state = Data::new(AppState {
         config: Arc::new(config.clone()),
         db,
         market_service,
     });
 
-   
     let http_server = HttpServer::new(move || {
         actix_web::App::new()
             .app_data(state.clone())
@@ -61,26 +55,20 @@ pub async fn run() -> Result<()> {
     })
     .bind((config.server.host.clone(), config.server.port))?
     .run();
-    
-    println!("HTTP Server started at {}:{}", config.server.host, config.server.port);
+
+    println!(
+        "HTTP Server started at {}:{}",
+        config.server.host, config.server.port
+    );
     println!("gRPC Server started at {}", grpc_addr);
-    
-    tokio::try_join!(
-        http_server,
-        async {
-            grpc_server
-                .await
-                .map_err(std::io::Error::other)
-        }
-    ).expect("Server Failed");
 
-    
+    tokio::try_join!(http_server, async {
+        grpc_server.await.map_err(std::io::Error::other)
+    })
+    .expect("Server Failed");
+
     Ok(())
-
-
-
 }
-
 
 async fn shutdown_signal() {
     tokio::signal::ctrl_c()

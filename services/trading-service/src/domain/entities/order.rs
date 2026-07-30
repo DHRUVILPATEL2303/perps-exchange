@@ -99,7 +99,8 @@ impl Order {
         }
 
         Ok(Self {
-            id: Uuid::new_v4(),            client_order_id,
+            id: Uuid::new_v4(),
+            client_order_id,
             user_id,
             symbol,
             side,

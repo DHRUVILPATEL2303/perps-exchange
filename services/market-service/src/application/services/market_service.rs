@@ -17,10 +17,7 @@ use crate::{
         },
         usecase::market_usecase::MarketUseCase,
     },
-    domain::{
-        entities::market::Market,
-        repositories::market_repository::MarketRepository,
-    },
+    domain::{entities::market::Market, repositories::market_repository::MarketRepository},
 };
 
 pub struct MarketService {

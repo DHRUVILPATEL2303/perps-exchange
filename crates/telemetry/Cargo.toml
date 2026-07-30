@@ -1,8 +1,13 @@
 [package]
 name = "telemetry"
-version.workspace=true
-edition.workspace=true
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-tracing.workspace=true
-tracing-subscriber.workspace=true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+tracing-opentelemetry.workspace = true
+prometheus.workspace = true

@@ -4,22 +4,14 @@ use anyhow::Result;
 
 use crate::{
     application::services::trading_service::TradingService,
-    infrastructure::{
-        cache::market_cache::MarketCache,
-        grpc::market_client::MarketGrpcClient,
-    },
+    infrastructure::{cache::market_cache::MarketCache, grpc::market_client::MarketGrpcClient},
     state::AppState,
 };
 
 pub async fn bootstrap() -> Result<AppState> {
-
     println!("Connecting to Market Service...");
 
-    let mut client =
-        MarketGrpcClient::connect(
-            "http://127.0.0.1:50051".into(),
-        )
-        .await?;
+    let mut client = MarketGrpcClient::connect("http://127.0.0.1:50051".into()).await?;
 
     println!("Loading markets...");
 
@@ -36,12 +28,7 @@ pub async fn bootstrap() -> Result<AppState> {
         market_cache.len().await
     );
 
-    let trading_service =
-        Arc::new(
-            TradingService::new(
-                market_cache.clone(),
-            ),
-        );
+    let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 
     Ok(AppState {
         market_cache,
