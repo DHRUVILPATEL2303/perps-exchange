@@ -4,6 +4,6 @@ use errors::AppError;
 use crate::state::AppState;
 
 pub async fn health(state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
-    let health_response = state.health_service.health().await;
-    Ok(HttpResponse::Ok().json(health_response.clone()))
+
+    Ok(HttpResponse::Ok().body("OK"))
 }

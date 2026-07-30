@@ -282,11 +282,17 @@ dependencies = [
  "config 0.1.0",
  "database",
  "errors",
+ "prost 0.14.4",
+ "proto",
+ "rust_decimal",
  "serde",
+ "serde_json",
  "sqlx",
  "telemetry",
  "tokio",
+ "tonic 0.14.6",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2451,6 +2457,7 @@ name = "proto"
 version = "0.1.0"
 dependencies = [
  "prost 0.14.4",
+ "serde",
  "tonic 0.14.6",
  "tonic-prost",
  "tonic-prost-build",
