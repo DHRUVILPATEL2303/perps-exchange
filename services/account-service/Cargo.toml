@@ -13,7 +13,13 @@ serde_json.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+rust_decimal = { workspace = true }
+sqlx = { workspace = true }
+async-trait.workspace = true
+tonic = { workspace = true }
+prost = { workspace = true }
 
+proto = { path = "../../crates/proto" }
 
 telemetry = { path = "../../crates/telemetry" }
 errors = { path = "../../crates/errors" }

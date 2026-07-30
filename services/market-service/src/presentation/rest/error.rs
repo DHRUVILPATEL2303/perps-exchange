@@ -31,6 +31,8 @@ impl ResponseError for ApiError {
             ApiError::Service(ServiceError::InvalidStatus) => StatusCode::BAD_REQUEST,
 
             ApiError::Service(ServiceError::MarketNotFound) => StatusCode::NOT_FOUND,
+
+            ApiError::Service(ServiceError::InsufficientBalance) => StatusCode::BAD_REQUEST,
         }
     }
 
@@ -60,6 +62,8 @@ impl ApiError {
             ApiError::Service(ServiceError::InvalidStatus) => "INVALID_STATUS".into(),
 
             ApiError::Service(ServiceError::MarketNotFound) => "MARKET_NOT_FOUND".into(),
+
+            ApiError::Service(ServiceError::InsufficientBalance) => "INSUFFICIENT_BALANCE".into(),
         }
     }
 }

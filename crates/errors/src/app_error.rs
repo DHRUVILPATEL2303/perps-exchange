@@ -25,6 +25,8 @@ pub enum ApiError {
     BadRequest,
 }
 
+
+
 #[derive(Debug, Error)]
 pub enum RepositoryError {
     #[error("Database error: {0}")]
@@ -42,7 +44,8 @@ pub enum RepositoryError {
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
-    #[error(transparent)]
+  
+     #[error(transparent)]
     Repository(#[from] RepositoryError),
 
     #[error("Invalid tick size")]
@@ -62,6 +65,9 @@ pub enum ServiceError {
 
     #[error("Market not found")]
     MarketNotFound,
+
+    #[error("Insufficient balance")]
+    InsufficientBalance,
 }
 
 impl ResponseError for AppError {
