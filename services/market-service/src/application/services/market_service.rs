@@ -51,8 +51,13 @@ impl MarketUseCase for MarketService {
         &self,
         symbol: &str,
     ) -> Result<Option<MarketResponse>, ServiceError> {
-        todo!()
     
+        let market = self
+            .repository
+            .find_by_symbol(symbol)
+            .await?;
+    
+        Ok(market.map(Into::into))
     }
 
     async fn create_market(
