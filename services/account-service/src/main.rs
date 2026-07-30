@@ -1,11 +1,10 @@
 use std::io::Result;
 
-pub mod state;
 pub mod bootstrap;
-
+pub mod state;
 
 #[tokio::main]
-async fn main() -> Result<()>{
+async fn main() -> Result<()> {
     telemetry::logging::init();
     bootstrap::run().await
 }

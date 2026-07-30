@@ -9,42 +9,28 @@ pub enum ApiError {
     Service(#[from] ServiceError),
 }
 
-#[derive(Debug,Clone,Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ErrorResponse {
-    pub code : String,
+    pub code: String,
     pub message: String,
 }
 
 impl ResponseError for ApiError {
     fn status_code(&self) -> StatusCode {
         match self {
-            ApiError::Service(ServiceError::InvalidTickSize) => {
-                StatusCode::BAD_REQUEST
-            }
+            ApiError::Service(ServiceError::InvalidTickSize) => StatusCode::BAD_REQUEST,
 
-            ApiError::Service(ServiceError::InvalidLotSize) => {
-                StatusCode::BAD_REQUEST
-            }
+            ApiError::Service(ServiceError::InvalidLotSize) => StatusCode::BAD_REQUEST,
 
-            ApiError::Service(ServiceError::InvalidLeverage) => {
-                StatusCode::BAD_REQUEST
-            }
+            ApiError::Service(ServiceError::InvalidLeverage) => StatusCode::BAD_REQUEST,
 
-            ApiError::Service(ServiceError::Repository(_)) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            ApiError::Service(ServiceError::Repository(_)) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            ApiError::Service(ServiceError::MarketAlreadyExists) => {
-                StatusCode::CONFLICT
-            }
+            ApiError::Service(ServiceError::MarketAlreadyExists) => StatusCode::CONFLICT,
 
-            ApiError::Service(ServiceError::InvalidStatus) => {
-                StatusCode::BAD_REQUEST
-            }
+            ApiError::Service(ServiceError::InvalidStatus) => StatusCode::BAD_REQUEST,
 
-            ApiError::Service(ServiceError::MarketNotFound) => {
-                StatusCode::NOT_FOUND
-            }
+            ApiError::Service(ServiceError::MarketNotFound) => StatusCode::NOT_FOUND,
         }
     }
 
@@ -61,26 +47,19 @@ impl ResponseError for ApiError {
 impl ApiError {
     fn code(&self) -> String {
         match self {
-            ApiError::Service(ServiceError::InvalidTickSize) =>
-                "INVALID_TICK_SIZE".into(),
+            ApiError::Service(ServiceError::InvalidTickSize) => "INVALID_TICK_SIZE".into(),
 
-            ApiError::Service(ServiceError::InvalidLotSize) =>
-                "INVALID_LOT_SIZE".into(),
+            ApiError::Service(ServiceError::InvalidLotSize) => "INVALID_LOT_SIZE".into(),
 
-            ApiError::Service(ServiceError::InvalidLeverage) =>
-                "INVALID_LEVERAGE".into(),
+            ApiError::Service(ServiceError::InvalidLeverage) => "INVALID_LEVERAGE".into(),
 
-            ApiError::Service(ServiceError::Repository(_)) =>
-                "DATABASE_ERROR".into(),
+            ApiError::Service(ServiceError::Repository(_)) => "DATABASE_ERROR".into(),
 
-            ApiError::Service(ServiceError::MarketAlreadyExists) =>
-                "MARKET_ALREADY_EXISTS".into(),
+            ApiError::Service(ServiceError::MarketAlreadyExists) => "MARKET_ALREADY_EXISTS".into(),
 
-            ApiError::Service(ServiceError::InvalidStatus) =>
-                "INVALID_STATUS".into(),
+            ApiError::Service(ServiceError::InvalidStatus) => "INVALID_STATUS".into(),
 
-            ApiError::Service(ServiceError::MarketNotFound) =>
-                "MARKET_NOT_FOUND".into(),
+            ApiError::Service(ServiceError::MarketNotFound) => "MARKET_NOT_FOUND".into(),
         }
     }
 }

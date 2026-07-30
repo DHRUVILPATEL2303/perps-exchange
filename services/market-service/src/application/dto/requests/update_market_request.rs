@@ -1,8 +1,7 @@
-
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug,Clone,Serialize,Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateMarketRequest {
     pub tick_size: Decimal,
     pub lot_size: Decimal,

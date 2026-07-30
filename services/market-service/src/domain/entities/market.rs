@@ -3,9 +3,9 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sqlx::prelude::FromRow;
 
-use crate::domain::enums::market_status::MarketStatus;
 
-#[derive(Debug, Clone,FromRow)]
+
+#[derive(Debug, Clone, FromRow)]
 pub struct Market {
     pub id: uuid::Uuid,
     pub symbol: String,

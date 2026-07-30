@@ -1,10 +1,10 @@
 use std::io::Result;
-mod bootstrap;
-mod state;
-pub mod presentation;
 pub mod application;
+mod bootstrap;
 pub mod domain;
 pub mod infrastructure;
+pub mod presentation;
+mod state;
 #[tokio::main]
 async fn main() -> Result<()> {
     telemetry::logging::init();

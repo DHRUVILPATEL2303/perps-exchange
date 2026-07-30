@@ -2,13 +2,7 @@ use async_trait::async_trait;
 use errors::app_error::RepositoryError;
 use uuid::Uuid;
 
-use crate::{
-    domain::{
-        entities::market::Market,
-        repositories::market_repository::MarketRepository,
-    },
-    
-};
+use crate::domain::{entities::market::Market, repositories::market_repository::MarketRepository};
 
 pub struct PostgresMarketRepository {
     pool: sqlx::PgPool,
@@ -22,10 +16,7 @@ impl PostgresMarketRepository {
 
 #[async_trait]
 impl MarketRepository for PostgresMarketRepository {
-    async fn create(
-        &self,
-        market: Market,
-    ) -> Result<Market, RepositoryError> {
+    async fn create(&self, market: Market) -> Result<Market, RepositoryError> {
         let market = sqlx::query_as::<_, Market>(
             r#"
             INSERT INTO markets (
@@ -64,10 +55,7 @@ impl MarketRepository for PostgresMarketRepository {
         Ok(market)
     }
 
-    async fn find_by_id(
-        &self,
-        id: Uuid,
-    ) -> Result<Option<Market>, RepositoryError> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Market>, RepositoryError> {
         let market = sqlx::query_as::<_, Market>(
             r#"
             SELECT *
@@ -82,10 +70,7 @@ impl MarketRepository for PostgresMarketRepository {
         Ok(market)
     }
 
-    async fn find_by_symbol(
-        &self,
-        symbol: &str,
-    ) -> Result<Option<Market>, RepositoryError> {
+    async fn find_by_symbol(&self, symbol: &str) -> Result<Option<Market>, RepositoryError> {
         let market = sqlx::query_as::<_, Market>(
             r#"
             SELECT *
@@ -100,9 +85,7 @@ impl MarketRepository for PostgresMarketRepository {
         Ok(market)
     }
 
-    async fn list(
-        &self,
-    ) -> Result<Vec<Market>, RepositoryError> {
+    async fn list(&self) -> Result<Vec<Market>, RepositoryError> {
         let markets = sqlx::query_as::<_, Market>(
             r#"
             SELECT *
@@ -116,11 +99,7 @@ impl MarketRepository for PostgresMarketRepository {
         Ok(markets)
     }
 
-    async fn update(
-        &self,
-        market: Market,
-    ) -> Result<Market, RepositoryError> {
-    
+    async fn update(&self, market: Market) -> Result<Market, RepositoryError> {
         let updated = sqlx::query_as::<_, Market>(
             r#"
             UPDATE markets
@@ -144,13 +123,10 @@ impl MarketRepository for PostgresMarketRepository {
         .bind(&market.symbol)
         .fetch_one(&self.pool)
         .await?;
-    
+
         Ok(updated)
     }
-    async fn delete(
-        &self,
-        id: Uuid,
-    ) -> Result<(), RepositoryError> {
+    async fn delete(&self, id: Uuid) -> Result<(), RepositoryError> {
         sqlx::query(
             r#"
             DELETE FROM markets
@@ -158,6 +134,20 @@ impl MarketRepository for PostgresMarketRepository {
             "#,
         )
         .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_by_symbol(&self, symbol: &str) -> Result<(), RepositoryError> {
+        sqlx::query(
+            r#"
+            DELETE FROM markets
+            WHERE symbol = $1
+            "#,
+        )
+        .bind(symbol)
         .execute(&self.pool)
         .await?;
 

@@ -10,10 +10,7 @@ impl AppConfig {
             //shared config
             .add_source(File::with_name("configs/common"))
             // specific service configuration
-            .add_source(File::with_name(&format!(
-                "configs/{}",
-                service_name
-            )))
+            .add_source(File::with_name(&format!("configs/{}", service_name)))
             .add_source(Environment::default().separator("__"))
             .build()?
             .try_deserialize()

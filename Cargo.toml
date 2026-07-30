@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
-
 members = [
-    # shared crates
     "crates/common",
     "crates/config",
     "crates/errors",
@@ -10,12 +8,12 @@ members = [
     "crates/types",
     "crates/utils",
     "crates/database",
-    # services
+    "crates/proto",
+
     "services/api-gateway",
     "services/account-service",
-    "services/market-service", "crates/database",
+    "services/market-service",
 ]
-
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
@@ -27,18 +25,14 @@ tokio = { version = "1", features = ["full"] }
 actix-web = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rust_decimal = { version = "1", features = ["serde"]}
 thiserror = "2"
 anyhow = "1"
 async-trait = "0.1.91"
-
 uuid = { version = "1", features = ["v4", "serde"] }
-
 dotenvy = "0.15"
-
 sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio",
     "postgres",
@@ -48,10 +42,16 @@ sqlx = { version = "0.8", default-features = false, features = [
     "rust_decimal",
     "chrono",
 ] }
-
-
-
 chrono = { version = "0.4", features = ["serde"] }
-
 redis = { version = "0.32", features = ["tokio-comp"] }
 config = "0.15"
+prost = "0.14"
+prost-types = "0.14"
+
+tonic = "0.14"
+tonic-build = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+
+
+

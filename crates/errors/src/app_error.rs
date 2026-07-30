@@ -1,11 +1,10 @@
-use thiserror::Error;
 use actix_web::{HttpResponse, ResponseError};
+use thiserror::Error;
 
-#[derive(Debug,Error)]
+#[derive(Debug, Error)]
 pub enum AppError {
-
     #[error("Internal Server Error")]
-    Internal ,
+    Internal,
 
     #[error("Not Found")]
     NotFound,
@@ -24,7 +23,6 @@ pub enum ApiError {
 
     #[error("Bad Request")]
     BadRequest,
-    
 }
 
 #[derive(Debug, Error)]
@@ -66,22 +64,13 @@ pub enum ServiceError {
     MarketNotFound,
 }
 
-
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         match self {
-            AppError::BadRequest => {
-                HttpResponse::BadRequest().finish()
-            }
-            AppError::Internal => {
-                HttpResponse::InternalServerError().finish()
-            }
+            AppError::BadRequest => HttpResponse::BadRequest().finish(),
+            AppError::Internal => HttpResponse::InternalServerError().finish(),
 
-            AppError::NotFound => {
-                HttpResponse::NotFound().finish()
-            }
-            
+            AppError::NotFound => HttpResponse::NotFound().finish(),
         }
-        
     }
 }

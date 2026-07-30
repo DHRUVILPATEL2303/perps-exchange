@@ -1,10 +1,6 @@
 use serde::Deserialize;
 
-use crate::{
-    database::DatabaseConfig,
-    grpc::GrpcConfig,
-    server::ServerConfig,
-};
+use crate::{database::DatabaseConfig, grpc::GrpcConfig, server::ServerConfig};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {

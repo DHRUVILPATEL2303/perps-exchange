@@ -2,7 +2,9 @@ use config::app::AppConfig;
 use database::manager::DatabaseManager;
 use std::sync::Arc;
 
-use crate::application::{services::market_service::MarketService, usecase::market_usecase::MarketUseCase};
+use crate::application::{
+  usecase::market_usecase::MarketUseCase,
+};
 
 #[derive(Clone)]
 pub struct AppState {

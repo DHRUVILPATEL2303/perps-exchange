@@ -1,6 +1,5 @@
 use crate::{
-    application::dto::response::market_response::MarketResponse,
-    domain::entities::market::Market,
+    application::dto::response::market_response::MarketResponse, domain::entities::market::Market,
 };
 
 impl From<Market> for MarketResponse {

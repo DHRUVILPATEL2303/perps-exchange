@@ -1,3 +1,3 @@
 pub mod handlers;
-pub mod routes;
 pub mod router;
+pub mod routes;

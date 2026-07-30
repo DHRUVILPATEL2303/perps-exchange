@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package market;
+
+service MarketService {
+    rpc GetMarket(GetMarketRequest) returns (GetMarketResponse);
+    rpc ListMarkets(ListMarketsRequest) returns (ListMarketsResponse);
+}
+
+message GetMarketRequest {
+    string symbol =1;
+    
+}
+
+message GetMarketResponse {
+    string id=1;
+    string symbol =2;
+    string base_asset =3;
+    string quote_asset =4;
+    string tick_size = 5;
+    string lot_size = 6;
+    string min_qty = 7;
+    uint32 max_leverage = 8;
+    string status = 9;   
+}
+
+message ListMarketsRequest {
+    
+}
+
+message ListMarketsResponse {
+  repeated GetMarketResponse markets = 1;
+}

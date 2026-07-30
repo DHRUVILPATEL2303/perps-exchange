@@ -8,20 +8,13 @@ pub struct DatabaseConfig {
     pub password: String,
     pub database: String,
     pub auto_migrate: bool,
-
 }
-
-
 
 impl DatabaseConfig {
     pub fn url(&self) -> String {
         format!(
             "postgres://{}:{}@{}:{}/{}",
-            self.username,
-            self.password,
-            self.host,
-            self.port,
-            self.database,
+            self.username, self.password, self.host, self.port, self.database,
         )
     }
 }
