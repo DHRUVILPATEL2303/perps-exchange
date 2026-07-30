@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package risk; 
+
+service RiskService {
+ rpc CheckOrderMargin(CheckOrderMarginRequest) returns (CheckOrderMarginResponse);
+}
+
+message CheckOrderMarginRequest {
+    string user_id = 1;
+    string symbol = 2;
+    string side = 3;
+    string quantity = 4;
+    string price = 5;
+    uint32 leverage = 6;
+    string margin_mode = 7;
+}
+
+message CheckOrderMarginResponse {
+    bool approved = 1;
+    string required_margin = 2;
+    optional string rejection_reason = 3;
+}

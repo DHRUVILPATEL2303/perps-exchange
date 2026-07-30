@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package account;
+
+service AccountService {
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc LockMargin(LockMarginRequest) returns (LockMarginResponse);
+  rpc ReleaseMargin(ReleaseMarginRequest) returns (ReleaseMarginResponse);
+  rpc AdjustMargin(AdjustMarginRequest) returns (AdjustMarginResponse);
+}
+
+message GetBalanceRequest {
+  string user_id = 1;
+  string asset = 2;
+}
+message GetBalanceResponse {
+  string available_balance = 1;
+  string locked_balance = 2;
+}
+
+message LockMarginRequest {
+  string user_id = 1;
+
+  string amount = 2;
+  string reference_id = 3;
+}
+message LockMarginResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ReleaseMarginRequest {
+  string user_id = 1;
+  string amount = 2;
+  string reference_id = 3;
+}
+message ReleaseMarginResponse {
+  bool success = 1;
+}
+
+message AdjustMarginRequest {
+  string user_id = 1;
+  string amount = 2;
+  string adjustment_type = 3;
+}
+message AdjustMarginResponse {
+  string new_balance = 1;
+}

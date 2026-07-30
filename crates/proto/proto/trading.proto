@@ -1,0 +1,57 @@
+syntax= "proto3";
+
+package trading;
+
+service TradingService {
+    rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+    rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+    rpc GetPostions(GetPostionsRequest) returns (GetPositionsResponse);
+}
+
+message PlaceOrderRequest {
+    string user_id = 1;
+    string symbol = 2;
+    string side = 3;
+    string order_type = 4;
+    string quantity = 5;
+    optional string price = 6;
+    optional string trigger_price = 7;
+    string time_in_force = 8;
+    uint32 leverage = 9;
+    string margin_mode = 10;
+    bool reduce_only = 11;
+    bool post_only = 12;
+}
+
+message PlaceOrderResponse {
+    string order_id = 1;
+    string status = 2;
+    optional string error_message = 3;
+}
+
+message CancelOrderRequest {
+    string user_id = 1;
+    string order_id = 2;
+    string symbol = 3;
+}
+
+message CancelOrderResponse {
+    bool success = 1;
+    optional string error_message = 2;
+}
+
+message GetPostionsRequest {
+       string user_id = 1;
+}
+message GetPositionsResponse {
+    repeated PositionInfo positions = 1;
+}
+message PositionInfo {
+    string symbol = 1;
+    string side = 2;
+    string size = 3;
+    string entry_price = 4;
+    string leverage = 5;
+    string margin_mode = 6;
+    string unrealized_pnl = 7;
+}
