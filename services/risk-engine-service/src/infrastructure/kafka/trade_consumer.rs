@@ -8,6 +8,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use uuid::Uuid;
 use crate::infrastructure::repositories::postgres_position_repository::PositionRepository;
+use crate::price_tracker::price_tracker::PriceTracker;
 
 #[derive(Deserialize, Debug)]
 pub struct TradeEvent {
@@ -25,13 +26,16 @@ pub struct TradeEvent {
 pub struct TradeConsumer {
     consumer: StreamConsumer,
     repository: Arc<PositionRepository>,
+    price_tracker: PriceTracker,
 }
+
 
 impl TradeConsumer {
     pub fn new(
         brokers: &str,
         group_id: &str,
         repository: Arc<PositionRepository>,
+        price_tracker: PriceTracker,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
@@ -39,14 +43,14 @@ impl TradeConsumer {
             .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "true")
             .create()?;
-
         consumer.subscribe(&["execution-reports"])?;
-
         Ok(Self {
             consumer,
             repository,
+            price_tracker,
         })
     }
+
 
     pub async fn run(self) {
         let mut stream = self.consumer.stream();
@@ -60,10 +64,12 @@ impl TradeConsumer {
                     if let Some(payload) = msg.payload() {
                         match serde_json::from_slice::<TradeEvent>(payload) {
                             Ok(event) => {
+                                self.price_tracker.set_perp_price(event.price);
                                 if let Err(e) = self.process_trade(event).await {
                                     tracing::error!("Failed to mirror position: {:?}", e);
                                 }
                             }
+
                             Err(e) => {
                                 tracing::error!(
                                     "Failed to deserialize TradeEvent in Risk Engine: {:?}, payload: {:?}",

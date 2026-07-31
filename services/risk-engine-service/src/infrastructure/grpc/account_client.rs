@@ -1,6 +1,9 @@
 use anyhow::Result;
+use proto::account::{
+    AdjustMarginRequest, AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse,
+    account_service_client::AccountServiceClient,
+};
 use tonic::transport::{Channel, Endpoint};
-use proto::account::{account_service_client::AccountServiceClient, GetBalanceRequest, GetBalanceResponse};
 
 #[derive(Clone)]
 pub struct AccountGrpcClient {
@@ -19,6 +22,22 @@ impl AccountGrpcClient {
         let mut client = self.client.clone();
         let request = tonic::Request::new(GetBalanceRequest { user_id, asset });
         let response = client.get_balance(request).await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn adjust_margin(
+        &self,
+        user_id: String,
+        amount: String,
+        adjustment_type: String,
+    ) -> Result<AdjustMarginResponse> {
+        let mut client = self.client.clone();
+        let request = tonic::Request::new(AdjustMarginRequest {
+            user_id,
+            amount,
+            adjustment_type,
+        });
+        let response = client.adjust_margin(request).await?;
         Ok(response.into_inner())
     }
 }

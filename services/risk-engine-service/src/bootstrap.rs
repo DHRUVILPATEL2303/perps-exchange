@@ -7,21 +7,13 @@ use proto::risk::risk_service_server::RiskServiceServer;
 use sqlx::{Connection, PgConnection};
 use tonic::transport::Server;
 use crate::{
-    grpc::server::RiskGrpcService,
-    infrastructure::{
-        grpc::{account_client::AccountGrpcClient, trading_client::TradingGrpcClient},
-        kafka::{
-            consumer::RiskConsumer, 
-            producer::LiquidationProducer, 
-            trade_consumer::TradeConsumer,
-            liquidation_consumer::LiquidationConsumer,
-        },
-        repositories::postgres_position_repository::PositionRepository,
-    },
-    state::AppState,
+    grpc::server::RiskGrpcService, infrastructure::{
+        grpc::{account_client::AccountGrpcClient, trading_client::TradingGrpcClient}, kafka::{
+            consumer::RiskConsumer, liquidation_consumer::LiquidationConsumer, producer::LiquidationProducer, trade_consumer::TradeConsumer,
+        }, repositories::postgres_position_repository::PositionRepository,
+    }, price_tracker::price_tracker::PriceTracker, state::AppState,
 };
-
-pub async fn bootstrap() -> Result<(
+pub async fn bootstrap(price_tracker: PriceTracker) -> Result<(
     AppState, 
     impl std::future::Future<Output = Result<(), tonic::transport::Error>>, 
     RiskConsumer, 
@@ -75,6 +67,7 @@ pub async fn bootstrap() -> Result<(
         "risk-engine-group",
         db.pool().clone(),
         producer,
+        price_tracker.clone(),
     )?;
 
     let position_repository = Arc::new(PositionRepository::new(db.pool().clone()));
@@ -82,6 +75,7 @@ pub async fn bootstrap() -> Result<(
         &brokers,
         "risk-engine-trade-group-v2",
         position_repository.clone(),
+        price_tracker.clone(),
     )?;
 
     let liquidation_consumer = LiquidationConsumer::new(
@@ -99,6 +93,7 @@ pub async fn bootstrap() -> Result<(
 
     Ok((state, grpc_server, risk_consumer, trade_consumer, liquidation_consumer))
 }
+
 
 async fn shutdown_signal() {
     tokio::signal::ctrl_c()

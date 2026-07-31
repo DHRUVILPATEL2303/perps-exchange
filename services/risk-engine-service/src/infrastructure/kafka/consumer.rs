@@ -11,6 +11,7 @@ use serde::Deserialize;
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 use crate::infrastructure::kafka::producer::{LiquidationEvent, LiquidationProducer};
+use crate::price_tracker::price_tracker::PriceTracker;
 
 #[derive(Deserialize)]
 pub struct PriceFeedTick {
@@ -19,35 +20,34 @@ pub struct PriceFeedTick {
     pub mark_price: Decimal,
     pub timestamp: u64,
 }
-
 pub struct RiskConsumer {
     consumer: StreamConsumer,
     db_pool: Pool<Postgres>,
     producer: Arc<LiquidationProducer>,
+    price_tracker: PriceTracker,
 }
-
 impl RiskConsumer {
     pub fn new(
-        brokers: &str,
-        group_id: &str,
-        db_pool: Pool<Postgres>,
-        producer: Arc<LiquidationProducer>,
-    ) -> Result<Self> {
-        let consumer: StreamConsumer = ClientConfig::new()
-            .set("bootstrap.servers", brokers)
-            .set("group.id", group_id)
-            .set("auto.offset.reset", "latest")
-            .set("enable.auto.commit", "true")
-            .create()?;
-
-        consumer.subscribe(&["price-feed"])?;
-
-        Ok(Self {
-            consumer,
-            db_pool,
-            producer,
-        })
-    }
+         brokers: &str,
+         group_id: &str,
+         db_pool: Pool<Postgres>,
+         producer: Arc<LiquidationProducer>,
+         price_tracker: PriceTracker,
+     ) -> Result<Self> {
+         let consumer: StreamConsumer = ClientConfig::new()
+             .set("bootstrap.servers", brokers)
+             .set("group.id", group_id)
+             .set("auto.offset.reset", "latest")
+             .set("enable.auto.commit", "true")
+             .create()?;
+         consumer.subscribe(&["price-feed"])?;
+         Ok(Self {
+             consumer,
+             db_pool,
+             producer,
+             price_tracker,
+         })
+     }
 
     pub async fn run(self) {
         let mut stream = self.consumer.stream();
@@ -60,12 +60,14 @@ impl RiskConsumer {
                 Ok(msg) => {
                     if let Some(payload) = msg.payload() {
                         if let Ok(tick) = serde_json::from_slice::<PriceFeedTick>(payload) {
+                            self.price_tracker.set_spot_price(tick.mark_price);
                             if let Err(e) = self.check_positions(tick).await {
                                 tracing::error!("Failed to check positions: {:?}", e);
                             }
                             let _ = self.consumer.commit_message(&msg, CommitMode::Async);
                         }
                     }
+
                 }
             }
         }

@@ -82,7 +82,7 @@ impl AccountUseCase for AccountService {
                 }
                 account.balance -= amount;
             }
-            "PNL" => {
+            "PNL" | "FUNDING" => {
                 account.balance += amount;
             }
             _ => return Err(ServiceError::InvalidStatus),
@@ -93,4 +93,5 @@ impl AccountUseCase for AccountService {
         
         Ok(updated)
     }
+
 }

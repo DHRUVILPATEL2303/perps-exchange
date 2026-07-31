@@ -1,7 +1,7 @@
 use anyhow::Result;
+use rust_decimal::Decimal;
 use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
-use rust_decimal::Decimal;
 
 pub struct PositionRepository {
     pool: Pool<Postgres>,
@@ -48,5 +48,28 @@ impl PositionRepository {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn list_active_positions(&self) -> Result<Vec<(Uuid, String, String, Decimal)>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT user_id, symbol, side, size
+            FROM positions
+            WHERE size > 0
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut positions = Vec::new();
+        for row in rows {
+            positions.push((
+                row.get("user_id"),
+                row.get("symbol"),
+                row.get("side"),
+                row.get("size"),
+            ));
+        }
+        Ok(positions)
     }
 }
