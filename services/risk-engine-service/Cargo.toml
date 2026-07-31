@@ -1,0 +1,24 @@
+[package]
+name = "risk-engine-service"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+rust_decimal.workspace = true
+chrono.workspace = true
+rdkafka.workspace = true
+tonic.workspace = true
+prost.workspace = true
+async-trait.workspace = true
+futures-util = "0.3"
+proto = { path = "../../crates/proto" }
+config = { path = "../../crates/config" }
+telemetry = { path = "../../crates/telemetry" }
