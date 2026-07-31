@@ -11,12 +11,17 @@ pub mod state;
 async fn main() -> Result<()> {
     telemetry::logging::init();
     
-    let (state, grpc_server) = bootstrap::bootstrap().await?;
+    let (state, grpc_server, trade_consumer) = bootstrap::bootstrap().await?;
 
     println!(
         "Trading Service Ready. Markets: {}",
         state.market_cache.len().await
     );
+
+    tokio::spawn(async move {
+        println!("Starting Kafka trade consumer...");
+        trade_consumer.run().await;
+    });
 
     println!("Starting gRPC Server...");
     grpc_server.await?;
