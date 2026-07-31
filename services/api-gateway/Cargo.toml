@@ -5,12 +5,17 @@ edition.workspace=true
 
 [dependencies]
 actix-web.workspace=true
+actix-ws.workspace=true
+tokio-stream.workspace=true
+redis = { workspace = true, features = ["tokio-comp"] }
+
 tokio.workspace=true
 tracing.workspace=true
 serde.workspace=true
 serde_json.workspace=true
 uuid.workspace=true
 chrono.workspace=true
+futures-util.workspace=true
 rust_decimal.workspace=true
 tonic.workspace=true
 prost.workspace=true

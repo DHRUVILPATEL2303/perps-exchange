@@ -8,6 +8,8 @@ tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 rdkafka = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp"] }
+
 tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
 anyhow = { workspace = true }

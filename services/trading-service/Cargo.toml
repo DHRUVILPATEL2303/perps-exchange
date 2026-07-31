@@ -26,4 +26,4 @@ proto = { path = "../../crates/proto" }
 database = { path = "../../crates/database" }
 thiserror.workspace = true
 rdkafka = { workspace = true }
-futures-util = "0.3"
+futures-util.workspace = true

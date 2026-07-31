@@ -13,5 +13,7 @@ pub struct AppState {
     pub market_client: MarketServiceClient<Channel>,
     pub account_client: AccountServiceClient<Channel>,
     pub trading_client: TradingServiceClient<Channel>,
+    pub ws_sessions : Arc<Mutex<Vec<actix_ws::Session>>>,
+    pub redis_client: redis::Client,
 }
 

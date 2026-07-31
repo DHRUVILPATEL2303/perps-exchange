@@ -1,10 +1,11 @@
-use actix_web::web;
 use crate::presentation::handlers::{
-    market_handler::list_markets,
     account_handler::get_balance,
-    trading_handler::{get_positions, place_order, cancel_order},
+    market_handler::list_markets,
+    trading_handler::{cancel_order, get_positions, place_order},
+    ws_handler::ws_index,
 };
 use crate::presentation::routes::health::health_routes;
+use actix_web::web;
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -15,6 +16,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/orders", web::post().to(place_order))
             .route("/orders/cancel", web::post().to(cancel_order)),
     );
+
+    cfg.route("/ws", web::get().to(ws_index));
 
     health_routes(cfg);
 }

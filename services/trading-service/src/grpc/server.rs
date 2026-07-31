@@ -1,7 +1,14 @@
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
-use crate::application::usecase::position_usecase::PositionUseCase;
+use crate::{
+    application::usecase::position_usecase::PositionUseCase,
+    infrastructure::{
+        grpc::{account_client::AccountGrpcClient, risk_client::RiskGrpcClient},
+        kafka::producer::{OrderProducer, KafkaOrderEvent},
+    },
+};
 use proto::trading::{
     trading_service_server::TradingService as GrpcTradingService,
     PlaceOrderRequest, PlaceOrderResponse,
@@ -12,6 +19,9 @@ use proto::trading::{
 
 pub struct TradingGrpcService {
     pub position_service: Arc<dyn PositionUseCase>,
+    pub account_client: Arc<Mutex<AccountGrpcClient>>,
+    pub risk_client: Arc<RiskGrpcClient>,
+    pub order_producer: Arc<OrderProducer>,
 }
 
 #[tonic::async_trait]
@@ -20,10 +30,59 @@ impl GrpcTradingService for TradingGrpcService {
         &self,
         request: Request<PlaceOrderRequest>,
     ) -> Result<Response<PlaceOrderResponse>, Status> {
-        let _req = request.into_inner();
-        
+        let req = request.into_inner();
+
+        let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
+
+        let check_res = self.risk_client.check_order_margin(
+            req.user_id.clone(),
+            req.symbol.clone(),
+            req.side.clone(),
+            req.quantity.clone(),
+            price_str.clone(),
+            req.leverage,
+            req.margin_mode.clone(),
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+
+        if !check_res.approved {
+            return Ok(Response::new(PlaceOrderResponse {
+                order_id: "".to_string(),
+                status: "REJECTED".to_string(),
+                error_message: Some(check_res.rejection_reason.unwrap_or_else(|| "Rejected by risk engine".to_string())),
+            }));
+        }
+
+        let order_id = Uuid::new_v4();
+
+        {
+            let mut acc_client = self.account_client.lock().await;
+            acc_client.lock_margin(
+                req.user_id.clone(),
+                check_res.required_margin.clone(),
+                order_id.to_string(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        }
+
+        let kafka_event = KafkaOrderEvent {
+            id: order_id.to_string(),
+            user_id: req.user_id.clone(),
+            symbol: req.symbol.clone(),
+            side: req.side.clone(),
+            order_type: req.order_type.clone(),
+            price: price_str,
+            quantity: req.quantity.clone(),
+        };
+
+        self.order_producer.publish_order(&kafka_event)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
         Ok(Response::new(PlaceOrderResponse {
-            order_id: Uuid::new_v4().to_string(),
+            order_id: order_id.to_string(),
             status: "OPEN".to_string(),
             error_message: None,
         }))

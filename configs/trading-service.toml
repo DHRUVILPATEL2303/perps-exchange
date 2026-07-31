@@ -11,9 +11,17 @@ port = 50052
 [market_service]
 endpoint = "http://127.0.0.1:50051"
 
+[kafka]
+brokers = ["127.0.0.1:9092"]
+
 [database]
 host = "localhost"
 port = 5432
 database = "exchange"
 username = "postgres"
 password = "postgres"
+auto_migrate = true
+
+[redis]
+host = "127.0.0.1"
+port = 6379

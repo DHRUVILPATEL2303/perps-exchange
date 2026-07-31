@@ -27,7 +27,7 @@ impl GrpcRiskService for RiskGrpcService {
 
         let required_margin = (qty * price) / leverage;
 
-        let balance_res = self.account_client.get_account_balance(req.user_id.clone(), "USDT".to_string())
+        let balance_res = self.account_client.get_balance(req.user_id.clone(), "USDT".to_string())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

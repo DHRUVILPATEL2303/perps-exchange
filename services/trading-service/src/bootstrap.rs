@@ -4,8 +4,8 @@ use crate::{
     grpc::server::TradingGrpcService,
     infrastructure::{
         cache::market_cache::MarketCache,
-        grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient},
-        kafka::trading_consumer::TradeConsumer,
+        grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient, risk_client::RiskGrpcClient},
+        kafka::{trading_consumer::TradeConsumer, producer::OrderProducer},
         repositories::{
             postgres_position_repository::PostgresPositionRepository,
             postgres_trade_repository::PostgresTradeRepository,
@@ -71,21 +71,31 @@ pub async fn bootstrap() -> Result<(
         AccountGrpcClient::connect("http://127.0.0.1:50053".into()).await?,
     ));
 
+    println!("Connecting to Risk Service...");
+    let risk_client = Arc::new(
+        RiskGrpcClient::connect("http://127.0.0.1:50057".into()).await?,
+    );
+
+    let brokers = config.kafka.brokers.join(",");
+    let order_producer = Arc::new(OrderProducer::new(&brokers)?);
+
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
     let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
 
-    let position_service = Arc::new(PositionService::new(position_repository, account_client));
+    let position_service = Arc::new(PositionService::new(position_repository, account_client.clone()));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 
     let grpc_service = TradingGrpcService {
         position_service: position_service.clone(),
+        account_client: account_client.clone(),
+        risk_client: risk_client.clone(),
+        order_producer: order_producer.clone(),
     };
 
     let grpc_server = Server::builder()
         .add_service(TradingServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
-    let brokers = config.kafka.brokers.join(",");
     let trade_consumer =
         TradeConsumer::new(&brokers, "trading-service-group", position_service.clone())?;
 
@@ -95,6 +105,8 @@ pub async fn bootstrap() -> Result<(
         market_cache,
         trading_service,
         position_service,
+        risk_client,
+        order_producer,
     };
 
     Ok((state, grpc_server, trade_consumer))

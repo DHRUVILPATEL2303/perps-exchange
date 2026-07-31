@@ -17,8 +17,8 @@ host = "localhost"
 port = 5432
 username = "postgres"
 password = "postgres"
-database = "perps"
-auto_migrate = false
+database = "perps_risk"
+auto_migrate = true
 
 [redis]
 host = "127.0.0.1"

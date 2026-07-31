@@ -7,19 +7,22 @@ use std::str::FromStr;
 use serde_json::json;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use redis::AsyncCommands;
 use crate::domain::entities::price_tick::PriceTick;
 use crate::domain::repositories::price_publisher::PricePublisher;
 
 pub struct AggregatorService {
     publisher: Arc<dyn PricePublisher>,
+    redis_client: redis::Client,
     binance_price: Arc<Mutex<Option<Decimal>>>,
     coinbase_price: Arc<Mutex<Option<Decimal>>>,
 }
 
 impl AggregatorService {
-    pub fn new(publisher: Arc<dyn PricePublisher>) -> Self {
+    pub fn new(publisher: Arc<dyn PricePublisher>, redis_client: redis::Client) -> Self {
         Self {
             publisher,
+            redis_client,
             binance_price: Arc::new(Mutex::new(None)),
             coinbase_price: Arc::new(Mutex::new(None)),
         }
@@ -114,6 +117,7 @@ impl AggregatorService {
         let publisher = self.publisher.clone();
         let binance_price = self.binance_price.clone();
         let coinbase_price = self.coinbase_price.clone();
+        let redis_client = self.redis_client.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(500));
@@ -153,9 +157,16 @@ impl AggregatorService {
                     if let Err(e) = publisher.publish(&tick).await {
                         tracing::error!("Failed to publish price feed: {:?}", e);
                     }
+
+                    if let Ok(mut conn) = redis_client.get_multiplexed_async_connection().await {
+                        if let Ok(payload) = serde_json::to_string(&tick) {
+                            let _: Result<(), _> = conn.publish("price-ticks", payload).await;
+                        }
+                    }
                 }
             }
         });
+
 
         Ok(())
     }

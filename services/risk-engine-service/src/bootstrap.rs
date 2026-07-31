@@ -4,24 +4,44 @@ use anyhow::Result;
 use config::app::AppConfig;
 use database::manager::DatabaseManager;
 use proto::risk::risk_service_server::RiskServiceServer;
+use sqlx::{Connection, PgConnection};
 use tonic::transport::Server;
 use crate::{
     grpc::server::RiskGrpcService,
     infrastructure::{
         grpc::{account_client::AccountGrpcClient, trading_client::TradingGrpcClient},
-        kafka::{consumer::RiskConsumer, producer::LiquidationProducer},
+        kafka::{consumer::RiskConsumer, producer::LiquidationProducer, trade_consumer::TradeConsumer},
+        repositories::postgres_position_repository::PositionRepository,
     },
     state::AppState,
 };
 
-pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = Result<(), tonic::transport::Error>>, RiskConsumer)> {
+pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = Result<(), tonic::transport::Error>>, RiskConsumer, TradeConsumer)> {
     let config = AppConfig::load("risk-engine-service").expect("Failed to load config");
 
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
         .parse()
         .expect("Invalid gRPC address");
 
+    let default_db_url = format!(
+        "postgres://{}:{}@{}:{}/postgres",
+        config.database.username,
+        config.database.password,
+        config.database.host,
+        config.database.port
+    );
+
+    let mut conn = PgConnection::connect(&default_db_url).await?;
+    let create_db_query = format!("CREATE DATABASE {}", config.database.database);
+    let _ = sqlx::query(&create_db_query).execute(&mut conn).await;
+
     let db = Arc::new(DatabaseManager::new(&config.database).await?);
+
+    if config.database.auto_migrate {
+        sqlx::migrate!("./migrations")
+            .run(db.pool())
+            .await?;
+    }
 
     let account_client = AccountGrpcClient::connect("http://127.0.0.1:50053".to_string()).await?;
     let trading_client = TradingGrpcClient::connect("http://127.0.0.1:50052".to_string()).await?;
@@ -43,6 +63,13 @@ pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = 
         producer,
     )?;
 
+    let position_repository = Arc::new(PositionRepository::new(db.pool().clone()));
+    let trade_consumer = TradeConsumer::new(
+        &brokers,
+        "risk-engine-trade-group",
+        position_repository,
+    )?;
+
     let state = AppState {
         config: Arc::new(config),
         db,
@@ -50,7 +77,7 @@ pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = 
         trading_client,
     };
 
-    Ok((state, grpc_server, risk_consumer))
+    Ok((state, grpc_server, risk_consumer, trade_consumer))
 }
 
 async fn shutdown_signal() {

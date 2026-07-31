@@ -6,7 +6,7 @@ use proto::account::{
     ReleaseMarginRequest, ReleaseMarginResponse,
     AdjustMarginRequest, AdjustMarginResponse,
 };
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Endpoint};
 
 pub struct AccountGrpcClient {
     client: AccountServiceClient<Channel>,
@@ -14,7 +14,9 @@ pub struct AccountGrpcClient {
 
 impl AccountGrpcClient {
     pub async fn connect(endpoint: String) -> Result<Self> {
-        let client = AccountServiceClient::connect(endpoint).await?;
+        let endpoint = Endpoint::from_shared(endpoint)?;
+        let channel = endpoint.connect_lazy();
+        let client = AccountServiceClient::new(channel);
         Ok(Self { client })
     }
 
