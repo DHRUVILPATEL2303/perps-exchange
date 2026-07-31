@@ -31,7 +31,6 @@ impl GrpcTradingService for TradingGrpcService {
         request: Request<PlaceOrderRequest>,
     ) -> Result<Response<PlaceOrderResponse>, Status> {
         let req = request.into_inner();
-
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
 
         let check_res = self.risk_client.check_order_margin(
@@ -75,6 +74,7 @@ impl GrpcTradingService for TradingGrpcService {
             order_type: req.order_type.clone(),
             price: price_str,
             quantity: req.quantity.clone(),
+            action: "PLACE".to_string(),
         };
 
         self.order_producer.publish_order(&kafka_event)
@@ -92,7 +92,22 @@ impl GrpcTradingService for TradingGrpcService {
         &self,
         request: Request<CancelOrderRequest>,
     ) -> Result<Response<CancelOrderResponse>, Status> {
-        let _req = request.into_inner();
+        let req = request.into_inner();
+
+        let kafka_event = KafkaOrderEvent {
+            id: req.order_id.clone(),
+            user_id: req.user_id.clone(),
+            symbol: req.symbol.clone(),
+            side: "BUY".to_string(),
+            order_type: "LIMIT".to_string(),
+            price: "0.00".to_string(),
+            quantity: "0.00".to_string(),
+            action: "CANCEL".to_string(),
+        };
+
+        self.order_producer.publish_order(&kafka_event)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CancelOrderResponse {
             success: true,

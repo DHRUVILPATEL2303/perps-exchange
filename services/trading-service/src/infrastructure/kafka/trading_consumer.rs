@@ -10,7 +10,6 @@ use serde::Deserialize;
 use uuid::Uuid;
 use crate::application::usecase::position_usecase::PositionUseCase;
 
-
 #[derive(Deserialize)]
 pub struct TradeEvent {
     pub id: String,
@@ -74,6 +73,32 @@ impl TradeConsumer {
     }
 
     async fn process_trade_event(&self, event: TradeEvent) -> Result<()> {
+        if event.taker_side == "CANCEL" {
+            let order_id = Uuid::parse_str(&event.maker_order_id)?;
+            let user_id = Uuid::parse_str(&event.maker_user_id)?;
+            let price = Decimal::from_str(&event.price)?;
+            let qty = Decimal::from_str(&event.quantity)?;
+            
+            let leverage = Decimal::from(20);
+            let margin_to_release = (qty * price) / leverage;
+
+            let mut client = proto::account::account_service_client::AccountServiceClient::connect("http://127.0.0.1:50053").await?;
+            let request = tonic::Request::new(proto::account::ReleaseMarginRequest {
+                user_id: user_id.to_string(),
+                amount: margin_to_release.to_string(),
+                reference_id: order_id.to_string(),
+            });
+            let _ = client.release_margin(request).await?;
+
+            tracing::info!(
+                order_id = %order_id,
+                user_id = %user_id,
+                released_margin = %margin_to_release,
+                "Order cancelled in matching book; margin successfully un-frozen"
+            );
+            return Ok(());
+        }
+
         let price = Decimal::from_str(&event.price)?;
         let qty = Decimal::from_str(&event.quantity)?;
         

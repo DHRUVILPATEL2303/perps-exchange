@@ -80,6 +80,10 @@ impl TradeConsumer {
     }
 
     async fn process_trade(&self, event: TradeEvent) -> Result<()> {
+        if event.taker_side == "CANCEL" {
+            return Ok(());
+        }
+
         let maker_side = if event.taker_side == "BUY" { "SHORT" } else { "LONG" };
         let taker_side = if event.taker_side == "BUY" { "LONG" } else { "SHORT" };
 

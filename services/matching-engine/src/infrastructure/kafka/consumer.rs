@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 use crate::application::services::matching_service::OrderBook;
 use crate::domain::entities::order::{BookOrder, OrderSide, OrderStatus, OrderType};
+use crate::domain::entities::trade::Trade;
 use crate::infrastructure::kafka::producer::TradeProducer;
 
 #[derive(Deserialize)]
@@ -25,6 +26,7 @@ pub struct IncomingOrder {
     pub order_type: String,
     pub price: String,
     pub quantity: String,
+    pub action: Option<String>,
 }
 
 pub struct OrderConsumer {
@@ -58,8 +60,6 @@ impl OrderConsumer {
     }
 
     pub async fn run(self) {
-    
-
         let consumer = self.consumer;
         let order_books = self.order_books;
         let producer = self.producer;
@@ -77,6 +77,54 @@ impl OrderConsumer {
                     if let Some(payload) = msg.payload() {
                         match serde_json::from_slice::<IncomingOrder>(payload) {
                             Ok(incoming) => {
+                                let order_id = match Uuid::parse_str(&incoming.id) {
+                                    Ok(uid) => uid,
+                                    Err(e) => {
+                                        tracing::error!("Invalid order UUID: {}", e);
+                                        continue;
+                                    }
+                                };
+                                let user_id = match Uuid::parse_str(&incoming.user_id) {
+                                    Ok(uid) => uid,
+                                    Err(e) => {
+                                        tracing::error!("Invalid user UUID: {}", e);
+                                        continue;
+                                    }
+                                };
+
+                                let symbol = incoming.symbol.clone();
+
+                                if incoming.action == Some("CANCEL".to_string()) {
+                                    let mut books = order_books.lock().await;
+                                    let book = books
+                                        .entry(symbol.clone())
+                                        .or_insert_with(|| OrderBook::new(symbol.clone()));
+
+                                    let cancel_res = book.cancel_order(order_id, &OrderSide::Buy)
+                                        .or_else(|| book.cancel_order(order_id, &OrderSide::Sell));
+                                    
+                                    if let Some((orig_price, orig_qty)) = cancel_res {
+                                        let cancel_event = Trade {
+                                            id: Uuid::new_v4(),
+                                            symbol: symbol.clone(),
+                                            maker_order_id: order_id,
+                                            taker_order_id: order_id,
+                                            maker_user_id: user_id,
+                                            taker_user_id: user_id,
+                                            price: orig_price,
+                                            quantity: orig_qty,
+                                            taker_side: "CANCEL".to_string(),
+                                            executed_at: chrono::Utc::now(),
+                                        };
+
+                                        if let Err(e) = producer.publish_trade(&cancel_event).await {
+                                            tracing::error!("Failed to publish cancel event: {}", e);
+                                        }
+                                    }
+                                    let _ = consumer.commit_message(&msg, CommitMode::Async);
+                                    continue;
+                                }
+
                                 let order = match Self::parse_order(incoming) {
                                     Ok(o) => o,
                                     Err(e) => {
@@ -85,7 +133,6 @@ impl OrderConsumer {
                                     }
                                 };
 
-                                let symbol = order.symbol.clone();
                                 let mut books = order_books.lock().await;
                                 let book = books
                                     .entry(symbol.clone())

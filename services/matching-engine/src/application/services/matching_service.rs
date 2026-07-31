@@ -127,19 +127,23 @@ impl OrderBook {
         trades
     }
 
-    pub fn cancel_order(&mut self, order_id: Uuid, side: &OrderSide) {
+    pub fn cancel_order(&mut self, order_id: Uuid, side: &OrderSide) -> Option<(Decimal, Decimal)> {
         let book_side = match side {
             OrderSide::Buy => &mut self.bids,
             OrderSide::Sell => &mut self.asks,
         };
 
+        let mut result = None;
         for level in book_side.values_mut() {
             if let Some(pos) = level.iter().position(|o| o.id == order_id) {
-                level.remove(pos);
-                break;
+                if let Some(order) = level.remove(pos) {
+                    result = Some((order.price, order.quantity));
+                    break;
+                }
             }
         }
 
         book_side.retain(|_, level| !level.is_empty());
+        result
     }
 }
