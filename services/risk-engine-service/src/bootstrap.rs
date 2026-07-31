@@ -10,13 +10,24 @@ use crate::{
     grpc::server::RiskGrpcService,
     infrastructure::{
         grpc::{account_client::AccountGrpcClient, trading_client::TradingGrpcClient},
-        kafka::{consumer::RiskConsumer, producer::LiquidationProducer, trade_consumer::TradeConsumer},
+        kafka::{
+            consumer::RiskConsumer, 
+            producer::LiquidationProducer, 
+            trade_consumer::TradeConsumer,
+            liquidation_consumer::LiquidationConsumer,
+        },
         repositories::postgres_position_repository::PositionRepository,
     },
     state::AppState,
 };
 
-pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = Result<(), tonic::transport::Error>>, RiskConsumer, TradeConsumer)> {
+pub async fn bootstrap() -> Result<(
+    AppState, 
+    impl std::future::Future<Output = Result<(), tonic::transport::Error>>, 
+    RiskConsumer, 
+    TradeConsumer,
+    LiquidationConsumer,
+)> {
     let config = AppConfig::load("risk-engine-service").expect("Failed to load config");
 
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
@@ -67,6 +78,12 @@ pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = 
     let trade_consumer = TradeConsumer::new(
         &brokers,
         "risk-engine-trade-group",
+        position_repository.clone(),
+    )?;
+
+    let liquidation_consumer = LiquidationConsumer::new(
+        &brokers,
+        "risk-engine-liq-group",
         position_repository,
     )?;
 
@@ -77,7 +94,7 @@ pub async fn bootstrap() -> Result<(AppState, impl std::future::Future<Output = 
         trading_client,
     };
 
-    Ok((state, grpc_server, risk_consumer, trade_consumer))
+    Ok((state, grpc_server, risk_consumer, trade_consumer, liquidation_consumer))
 }
 
 async fn shutdown_signal() {

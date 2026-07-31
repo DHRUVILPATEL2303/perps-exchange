@@ -5,7 +5,7 @@ use crate::{
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient, risk_client::RiskGrpcClient},
-        kafka::{trading_consumer::TradeConsumer, producer::OrderProducer},
+        kafka::{trading_consumer::TradeConsumer, producer::OrderProducer, liquidation_consumer::LiquidationConsumer},
         repositories::{
             postgres_position_repository::PostgresPositionRepository,
             postgres_trade_repository::PostgresTradeRepository,
@@ -27,6 +27,7 @@ pub async fn bootstrap() -> Result<(
     AppState,
     impl std::future::Future<Output = Result<(), tonic::transport::Error>>,
     TradeConsumer,
+    LiquidationConsumer,
 )> {
     let config = AppConfig::load("trading-service").expect("Failed to load config");
 
@@ -82,7 +83,7 @@ pub async fn bootstrap() -> Result<(
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
     let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
 
-    let position_service = Arc::new(PositionService::new(position_repository, account_client.clone()));
+    let position_service = Arc::new(PositionService::new(position_repository.clone(), account_client.clone()));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 
     let grpc_service = TradingGrpcService {
@@ -99,6 +100,13 @@ pub async fn bootstrap() -> Result<(
     let trade_consumer =
         TradeConsumer::new(&brokers, "trading-service-group", position_service.clone())?;
 
+    let liquidation_consumer = LiquidationConsumer::new(
+        &brokers,
+        "trading-service-liq-group",
+        position_repository,
+        account_client,
+    )?;
+
     let state = AppState {
         config: Arc::new(config),
         db,
@@ -109,7 +117,7 @@ pub async fn bootstrap() -> Result<(
         order_producer,
     };
 
-    Ok((state, grpc_server, trade_consumer))
+    Ok((state, grpc_server, trade_consumer, liquidation_consumer))
 }
 
 async fn shutdown_signal() {
