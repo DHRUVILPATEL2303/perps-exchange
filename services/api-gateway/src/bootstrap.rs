@@ -14,15 +14,17 @@ pub async fn run() -> std::io::Result<()> {
 
     let config = AppConfig::load("api-gateway").expect("Failed to load config");
 
-    let market_client = MarketServiceClient::connect("http://127.0.0.1:50051")
+    let services_host = std::env::var("SERVICES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+
+    let market_client = MarketServiceClient::connect(format!("http://{}:50051", services_host))
         .await
         .expect("Failed to connect to Market Service");
 
-    let trading_client = TradingServiceClient::connect("http://127.0.0.1:50052")
+    let trading_client = TradingServiceClient::connect(format!("http://{}:50052", services_host))
         .await
         .expect("Failed to connect to Trading Service");
 
-    let account_client = AccountServiceClient::connect("http://127.0.0.1:50053")
+    let account_client = AccountServiceClient::connect(format!("http://{}:50053", services_host))
         .await
         .expect("Failed to connect to Account Service");
 

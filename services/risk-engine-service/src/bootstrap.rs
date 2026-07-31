@@ -54,8 +54,9 @@ pub async fn bootstrap() -> Result<(
             .await?;
     }
 
-    let account_client = AccountGrpcClient::connect("http://127.0.0.1:50053".to_string()).await?;
-    let trading_client = TradingGrpcClient::connect("http://127.0.0.1:50052".to_string()).await?;
+    let services_host = std::env::var("SERVICES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let account_client = AccountGrpcClient::connect(format!("http://{}:50053", services_host)).await?;
+    let trading_client = TradingGrpcClient::connect(format!("http://{}:50052", services_host)).await?;
 
     let grpc_service = RiskGrpcService {
         account_client: account_client.clone(),

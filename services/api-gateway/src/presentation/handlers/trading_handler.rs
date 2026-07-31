@@ -2,7 +2,7 @@ use actix_web::web::{Data, Json, Path};
 use actix_web::HttpResponse;
 use crate::state::AppState;
 use proto::trading::{
-    PlaceOrderRequest, CancelOrderRequest, GetPostionsRequest,
+    PlaceOrderRequest, CancelOrderRequest, GetPostionsRequest, GetOpenOrdersRequest,
 };
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
@@ -75,6 +75,18 @@ pub async fn cancel_order(state: Data<AppState>, body: Json<HTTPCancelOrderReque
     };
     match client.cancel_order(grpc_req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner()),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+pub async fn get_open_orders(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
+    let user_id = path.into_inner();
+    let mut client = state.trading_client.clone();
+    let grpc_req = GetOpenOrdersRequest {
+        user_id: user_id.to_string(),
+    };
+    match client.get_open_orders(grpc_req).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner().orders),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

@@ -6,6 +6,7 @@ service TradingService {
     rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
     rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
     rpc GetPostions(GetPostionsRequest) returns (GetPositionsResponse);
+    rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
 }
 
 message PlaceOrderRequest {
@@ -54,4 +55,20 @@ message PositionInfo {
     string leverage = 5;
     string margin_mode = 6;
     string unrealized_pnl = 7;
+}
+
+message GetOpenOrdersRequest {
+    string user_id = 1;
+}
+message GetOpenOrdersResponse {
+    repeated OrderInfo orders = 1;
+}
+message OrderInfo {
+    string order_id = 1;
+    string symbol = 2;
+    string side = 3;
+    string order_type = 4;
+    string price = 5;
+    string quantity = 6;
+    string status = 7;
 }

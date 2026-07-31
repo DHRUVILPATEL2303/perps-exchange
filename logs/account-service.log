@@ -1,0 +1,10 @@
+[2m2026-07-31T19:49:36.192269Z[0m [32m INFO[0m [2msqlx::postgres::notice[0m[2m:[0m [2m/Users/dhruvilpatel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-postgres-0.8.6/src/connection/stream.rs[0m[2m:[0m[2m185:[0m relation "_sqlx_migrations" already exists, skipping
+[2m2026-07-31T19:49:36.197146Z[0m [32m INFO[0m [2mactix_server::builder[0m[2m:[0m [2m/Users/dhruvilpatel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-server-2.6.0/src/builder.rs[0m[2m:[0m[2m310:[0m starting 10 workers
+HTTP Server started at 127.0.0.1:8083
+gRPC Server started at 127.0.0.1:50053
+[2m2026-07-31T19:49:36.197248Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m [2m/Users/dhruvilpatel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-server-2.6.0/src/server.rs[0m[2m:[0m[2m192:[0m Tokio runtime found; starting in existing Tokio runtime
+[2m2026-07-31T19:49:36.197285Z[0m [32m INFO[0m [2mactix_server::server[0m[2m:[0m [2m/Users/dhruvilpatel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/actix-server-2.6.0/src/server.rs[0m[2m:[0m[2m197:[0m starting service: "actix-web-service-127.0.0.1:8083", workers: 10, listening on: 127.0.0.1:8083
+
+thread 'main' (5675794) panicked at services/account-service/src/bootstrap.rs:83:6:
+Server failed: Custom { kind: Other, error: tonic::transport::Error(Transport, Os { code: 48, kind: AddrInUse, message: "Address already in use" }) }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

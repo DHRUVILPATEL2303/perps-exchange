@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use std::str::FromStr;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 use crate::{
     application::usecase::position_usecase::PositionUseCase,
+    domain::repositories::order_repository::{OrderRepository, OrderEntity},
     infrastructure::{
         grpc::{account_client::AccountGrpcClient, risk_client::RiskGrpcClient},
         kafka::producer::{OrderProducer, KafkaOrderEvent},
@@ -14,7 +16,8 @@ use proto::trading::{
     PlaceOrderRequest, PlaceOrderResponse,
     CancelOrderRequest, CancelOrderResponse,
     GetPostionsRequest, GetPositionsResponse,
-    PositionInfo,
+    GetOpenOrdersRequest, GetOpenOrdersResponse,
+    PositionInfo, OrderInfo,
 };
 
 pub struct TradingGrpcService {
@@ -22,6 +25,7 @@ pub struct TradingGrpcService {
     pub account_client: Arc<Mutex<AccountGrpcClient>>,
     pub risk_client: Arc<RiskGrpcClient>,
     pub order_producer: Arc<OrderProducer>,
+    pub order_repository: Arc<dyn OrderRepository>,
 }
 
 #[tonic::async_trait]
@@ -54,6 +58,22 @@ impl GrpcTradingService for TradingGrpcService {
         }
 
         let order_id = Uuid::new_v4();
+        let user_id = Uuid::parse_str(&req.user_id)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let order_entity = OrderEntity {
+            id: order_id,
+            user_id,
+            symbol: req.symbol.clone(),
+            side: req.side.clone(),
+            order_type: req.order_type.clone(),
+            price: rust_decimal::Decimal::from_str(&price_str).unwrap_or(rust_decimal::Decimal::ZERO),
+            quantity: rust_decimal::Decimal::from_str(&req.quantity).unwrap_or(rust_decimal::Decimal::ZERO),
+            status: "OPEN".to_string(),
+        };
+
+        self.order_repository.create(order_entity).await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         {
             let mut acc_client = self.account_client.lock().await;
@@ -142,6 +162,36 @@ impl GrpcTradingService for TradingGrpcService {
 
         Ok(Response::new(GetPositionsResponse {
             positions: pb_positions,
+        }))
+    }
+
+    async fn get_open_orders(
+        &self,
+        request: Request<GetOpenOrdersRequest>,
+    ) -> Result<Response<GetOpenOrdersResponse>, Status> {
+        let req = request.into_inner();
+        let user_id = Uuid::parse_str(&req.user_id)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let orders = self.order_repository.list_open_by_user(user_id)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let pb_orders = orders
+            .into_iter()
+            .map(|o| OrderInfo {
+                order_id: o.id.to_string(),
+                symbol: o.symbol,
+                side: o.side,
+                order_type: o.order_type,
+                price: o.price.to_string(),
+                quantity: o.quantity.to_string(),
+                status: o.status,
+            })
+            .collect();
+
+        Ok(Response::new(GetOpenOrdersResponse {
+            orders: pb_orders,
         }))
     }
 }

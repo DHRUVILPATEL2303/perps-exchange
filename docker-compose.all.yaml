@@ -1,0 +1,226 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: perps-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=perps
+    ports:
+       - "5432:5432"
+    volumes:
+       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: perps-timescaledb
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=perps_charts
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:latest
+    container_name: perps-redis
+    ports:
+      - "6379:6379"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: perps-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,KAFKA_HOST://host.docker.internal:9092'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,KAFKA_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  market-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: market-service
+    command: ["market-service"]
+    ports:
+      - "50051:50051"
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  account-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: account-service
+    command: ["account-service"]
+    ports:
+      - "50053:50053"
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  trading-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-service
+    command: ["trading-service"]
+    ports:
+      - "50052:50052"
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  risk-engine-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: risk-engine-service
+    command: ["risk-engine-service"]
+    ports:
+      - "50057:50057"
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  matching-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: matching-engine
+    command: ["matching-engine"]
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      kafka:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  oracle-aggregator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oracle-aggregator
+    command: ["oracle-aggregator"]
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  binance-liquidation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: binance-liquidation
+    command: ["binance-liquidation"]
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      kafka:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    command: ["api-gateway"]
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=host.docker.internal
+      - REDIS__HOST=host.docker.internal
+      - KAFKA__BROKERS=host.docker.internal:9092
+      - SERVICES_HOST=host.docker.internal
+    depends_on:
+      trading-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+  timescaledb_data:

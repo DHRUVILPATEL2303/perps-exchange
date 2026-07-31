@@ -1,0 +1,8 @@
+target
+.git
+.cargo
+logs
+.env
+.DS_Store
+*.log
+*.pid

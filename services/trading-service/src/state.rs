@@ -4,6 +4,7 @@ use database::manager::DatabaseManager;
 use crate::{
     application::services::trading_service::TradingService,
     application::usecase::position_usecase::PositionUseCase,
+    domain::repositories::order_repository::OrderRepository,
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::risk_client::RiskGrpcClient,
@@ -20,4 +21,5 @@ pub struct AppState {
     pub position_service: Arc<dyn PositionUseCase>,
     pub risk_client: Arc<RiskGrpcClient>,
     pub order_producer: Arc<OrderProducer>,
+    pub order_repository: Arc<dyn OrderRepository>,
 }

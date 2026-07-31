@@ -2,6 +2,7 @@ use crate::{
     application::services::position_service::PositionService,
     application::services::trading_service::TradingService,
     grpc::server::TradingGrpcService,
+    domain::repositories::order_repository::OrderRepository,
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient, risk_client::RiskGrpcClient},
@@ -9,6 +10,7 @@ use crate::{
         repositories::{
             postgres_position_repository::PostgresPositionRepository,
             postgres_trade_repository::PostgresTradeRepository,
+            postgres_order_repository::PostgresOrderRepository,
         },
     },
     state::AppState,
@@ -53,8 +55,10 @@ pub async fn bootstrap() -> Result<(
         sqlx::migrate!("./migrations").run(db.pool()).await?;
     }
 
+    let services_host = std::env::var("SERVICES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+
     println!("Connecting to Market Service...");
-    let mut market_client = MarketGrpcClient::connect("http://127.0.0.1:50051".into()).await?;
+    let mut market_client = MarketGrpcClient::connect(format!("http://{}:50051", services_host)).await?;
 
     println!("Loading markets...");
     let markets = market_client.list_markets().await?;
@@ -69,12 +73,12 @@ pub async fn bootstrap() -> Result<(
 
     println!("Connecting to Account Service...");
     let account_client = Arc::new(Mutex::new(
-        AccountGrpcClient::connect("http://127.0.0.1:50053".into()).await?,
+        AccountGrpcClient::connect(format!("http://{}:50053", services_host)).await?,
     ));
 
     println!("Connecting to Risk Service...");
     let risk_client = Arc::new(
-        RiskGrpcClient::connect("http://127.0.0.1:50057".into()).await?,
+        RiskGrpcClient::connect(format!("http://{}:50057", services_host)).await?,
     );
 
     let brokers = config.kafka.brokers.join(",");
@@ -82,6 +86,7 @@ pub async fn bootstrap() -> Result<(
 
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
     let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
+    let order_repository = Arc::new(PostgresOrderRepository::new(db.pool().clone()));
 
     let position_service = Arc::new(PositionService::new(position_repository.clone(), account_client.clone()));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
@@ -91,6 +96,7 @@ pub async fn bootstrap() -> Result<(
         account_client: account_client.clone(),
         risk_client: risk_client.clone(),
         order_producer: order_producer.clone(),
+        order_repository: order_repository.clone(),
     };
 
     let grpc_server = Server::builder()
@@ -98,7 +104,7 @@ pub async fn bootstrap() -> Result<(
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
     let trade_consumer =
-        TradeConsumer::new(&brokers, "trading-service-group-v2", position_service.clone())?;
+        TradeConsumer::new(&brokers, "trading-service-group-v2", position_service.clone(), order_repository.clone())?;
 
     let liquidation_consumer = LiquidationConsumer::new(
         &brokers,
@@ -115,6 +121,7 @@ pub async fn bootstrap() -> Result<(
         position_service,
         risk_client,
         order_producer,
+        order_repository,
     };
 
     Ok((state, grpc_server, trade_consumer, liquidation_consumer))
