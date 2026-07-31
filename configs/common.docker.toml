@@ -1,0 +1,16 @@
+environment = "development"
+
+[database]
+host = "postgres"
+port = 5432
+username = "postgres"
+password = "postgres"
+database = "perps"
+auto_migrate = true
+
+[redis]
+host = "redis"
+port = 6379
+
+[kafka]
+brokers = ["kafka:29092"]

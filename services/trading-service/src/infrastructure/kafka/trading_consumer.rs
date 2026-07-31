@@ -90,8 +90,8 @@ impl TradeConsumer {
 
             self.order_repository.update_status(order_id, "CANCELLED").await?;
 
-            let services_host = std::env::var("SERVICES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-            let mut client = proto::account::account_service_client::AccountServiceClient::connect(format!("http://{}:50053", services_host)).await?;
+            let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+            let mut client = proto::account::account_service_client::AccountServiceClient::connect(account_url).await?;
             let request = tonic::Request::new(proto::account::ReleaseMarginRequest {
                 user_id: user_id.to_string(),
                 amount: margin_to_release.to_string(),

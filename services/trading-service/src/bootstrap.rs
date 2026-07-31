@@ -55,10 +55,12 @@ pub async fn bootstrap() -> Result<(
         sqlx::migrate!("./migrations").run(db.pool()).await?;
     }
 
-    let services_host = std::env::var("SERVICES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let market_url = std::env::var("MARKET_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
+    let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+    let risk_url = std::env::var("RISK_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50057".to_string());
 
     println!("Connecting to Market Service...");
-    let mut market_client = MarketGrpcClient::connect(format!("http://{}:50051", services_host)).await?;
+    let mut market_client = MarketGrpcClient::connect(market_url).await?;
 
     println!("Loading markets...");
     let markets = market_client.list_markets().await?;
@@ -73,12 +75,12 @@ pub async fn bootstrap() -> Result<(
 
     println!("Connecting to Account Service...");
     let account_client = Arc::new(Mutex::new(
-        AccountGrpcClient::connect(format!("http://{}:50053", services_host)).await?,
+        AccountGrpcClient::connect(account_url).await?,
     ));
 
     println!("Connecting to Risk Service...");
     let risk_client = Arc::new(
-        RiskGrpcClient::connect(format!("http://{}:50057", services_host)).await?,
+        RiskGrpcClient::connect(risk_url).await?,
     );
 
     let brokers = config.kafka.brokers.join(",");

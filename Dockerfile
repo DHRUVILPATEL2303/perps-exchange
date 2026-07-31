@@ -36,3 +36,4 @@ COPY --from=builder /usr/src/perps-exchange/target/release/binance-liquidation /
 COPY --from=builder /usr/src/perps-exchange/target/release/api-gateway /usr/local/bin/
 
 COPY --from=builder /usr/src/perps-exchange/configs /app/configs
+COPY --from=builder /usr/src/perps-exchange/configs/common.docker.toml /app/configs/common.toml
