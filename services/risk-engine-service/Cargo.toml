@@ -22,3 +22,5 @@ futures-util = "0.3"
 proto = { path = "../../crates/proto" }
 config = { path = "../../crates/config" }
 telemetry = { path = "../../crates/telemetry" }
+database = { path = "../../crates/database" }
+sqlx = { workspace = true }
