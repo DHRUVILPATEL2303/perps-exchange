@@ -13,6 +13,7 @@ pub struct KafkaOrderEvent {
     pub order_type: String,
     pub price: String,
     pub quantity: String,
+    pub action: String,
 }
 
 pub struct OrderProducer {

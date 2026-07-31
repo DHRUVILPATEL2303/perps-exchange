@@ -98,11 +98,11 @@ pub async fn bootstrap() -> Result<(
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
     let trade_consumer =
-        TradeConsumer::new(&brokers, "trading-service-group", position_service.clone())?;
+        TradeConsumer::new(&brokers, "trading-service-group-v2", position_service.clone())?;
 
     let liquidation_consumer = LiquidationConsumer::new(
         &brokers,
-        "trading-service-liq-group",
+        "trading-service-liq-group-v2",
         position_repository,
         account_client,
     )?;

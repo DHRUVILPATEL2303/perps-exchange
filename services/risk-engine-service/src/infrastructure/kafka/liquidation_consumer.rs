@@ -31,7 +31,7 @@ impl LiquidationConsumer {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .set("group.id", group_id)
-            .set("auto.offset.reset", "latest")
+            .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "true")
             .create()?;
 

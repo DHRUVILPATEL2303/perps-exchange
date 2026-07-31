@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::str::FromStr;
 use anyhow::Result;
 use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
@@ -10,15 +9,16 @@ use serde::Deserialize;
 use uuid::Uuid;
 use crate::infrastructure::repositories::postgres_position_repository::PositionRepository;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct TradeEvent {
+    pub id: Uuid,
     pub symbol: String,
-    pub maker_order_id: String,
-    pub taker_order_id: String,
-    pub maker_user_id: String,
-    pub taker_user_id: String,
-    pub price: String,
-    pub quantity: String,
+    pub maker_order_id: Uuid,
+    pub taker_order_id: Uuid,
+    pub maker_user_id: Uuid,
+    pub taker_user_id: Uuid,
+    pub price: Decimal,
+    pub quantity: Decimal,
     pub taker_side: String,
 }
 
@@ -36,7 +36,7 @@ impl TradeConsumer {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .set("group.id", group_id)
-            .set("auto.offset.reset", "latest")
+            .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "true")
             .create()?;
 
@@ -58,12 +58,21 @@ impl TradeConsumer {
                 }
                 Ok(msg) => {
                     if let Some(payload) = msg.payload() {
-                        if let Ok(event) = serde_json::from_slice::<TradeEvent>(payload) {
-                            if let Err(e) = self.process_trade(event).await {
-                                tracing::error!("Failed to mirror position: {:?}", e);
+                        match serde_json::from_slice::<TradeEvent>(payload) {
+                            Ok(event) => {
+                                if let Err(e) = self.process_trade(event).await {
+                                    tracing::error!("Failed to mirror position: {:?}", e);
+                                }
                             }
-                            let _ = self.consumer.commit_message(&msg, CommitMode::Async);
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to deserialize TradeEvent in Risk Engine: {:?}, payload: {:?}",
+                                    e,
+                                    String::from_utf8_lossy(payload)
+                                );
+                            }
                         }
+                        let _ = self.consumer.commit_message(&msg, CommitMode::Async);
                     }
                 }
             }
@@ -71,48 +80,43 @@ impl TradeConsumer {
     }
 
     async fn process_trade(&self, event: TradeEvent) -> Result<()> {
-        let price = Decimal::from_str(&event.price)?;
-        let qty = Decimal::from_str(&event.quantity)?;
-        let maker_user = Uuid::parse_str(&event.maker_user_id)?;
-        let taker_user = Uuid::parse_str(&event.taker_user_id)?;
-
         let maker_side = if event.taker_side == "BUY" { "SHORT" } else { "LONG" };
         let taker_side = if event.taker_side == "BUY" { "LONG" } else { "SHORT" };
 
         let leverage = 20;
         let mmr = Decimal::new(5, 3);
 
-        let taker_margin = (qty * price) / Decimal::from(leverage);
+        let taker_margin = (event.quantity * event.price) / Decimal::from(leverage);
         let taker_liq = if taker_side == "LONG" {
-            price - (taker_margin / qty) / (Decimal::ONE - mmr)
+            event.price - (taker_margin / event.quantity) / (Decimal::ONE - mmr)
         } else {
-            price + (taker_margin / qty) / (Decimal::ONE + mmr)
+            event.price + (taker_margin / event.quantity) / (Decimal::ONE + mmr)
         };
 
         self.repository.update_position(
-            taker_user,
+            event.taker_user_id,
             &event.symbol,
             taker_side,
-            qty,
-            price,
+            event.quantity,
+            event.price,
             taker_margin,
             leverage,
             taker_liq,
         ).await?;
 
-        let maker_margin = (qty * price) / Decimal::from(leverage);
+        let maker_margin = (event.quantity * event.price) / Decimal::from(leverage);
         let maker_liq = if maker_side == "LONG" {
-            price - (maker_margin / qty) / (Decimal::ONE - mmr)
+            event.price - (maker_margin / event.quantity) / (Decimal::ONE - mmr)
         } else {
-            price + (maker_margin / qty) / (Decimal::ONE + mmr)
+            event.price + (maker_margin / event.quantity) / (Decimal::ONE + mmr)
         };
 
         self.repository.update_position(
-            maker_user,
+            event.maker_user_id,
             &event.symbol,
             maker_side,
-            qty,
-            price,
+            event.quantity,
+            event.price,
             maker_margin,
             leverage,
             maker_liq,

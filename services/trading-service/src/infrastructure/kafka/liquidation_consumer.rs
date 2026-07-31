@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::str::FromStr;
 use anyhow::Result;
 use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
@@ -12,13 +11,13 @@ use tokio::sync::Mutex;
 use crate::domain::repositories::position_repository::PositionRepository;
 use crate::infrastructure::grpc::account_client::AccountGrpcClient;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct LiquidationEvent {
-    pub position_id: String,
-    pub user_id: String,
+    pub position_id: Uuid,
+    pub user_id: Uuid,
     pub symbol: String,
     pub side: String,
-    pub margin: String,
+    pub margin: Decimal,
 }
 
 pub struct LiquidationConsumer {
@@ -37,7 +36,7 @@ impl LiquidationConsumer {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .set("group.id", group_id)
-            .set("auto.offset.reset", "latest")
+            .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "true")
             .create()?;
 
@@ -60,12 +59,21 @@ impl LiquidationConsumer {
                 }
                 Ok(msg) => {
                     if let Some(payload) = msg.payload() {
-                        if let Ok(event) = serde_json::from_slice::<LiquidationEvent>(payload) {
-                            if let Err(e) = self.execute_liquidation(event).await {
-                                tracing::error!("Failed to execute liquidation: {:?}", e);
+                        match serde_json::from_slice::<LiquidationEvent>(payload) {
+                            Ok(event) => {
+                                if let Err(e) = self.execute_liquidation(event).await {
+                                    tracing::error!("Failed to execute liquidation: {:?}", e);
+                                }
                             }
-                            let _ = self.consumer.commit_message(&msg, CommitMode::Async);
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to deserialize LiquidationEvent: {:?}, payload: {:?}",
+                                    e,
+                                    String::from_utf8_lossy(payload)
+                                );
+                            }
                         }
+                        let _ = self.consumer.commit_message(&msg, CommitMode::Async);
                     }
                 }
             }
@@ -73,11 +81,7 @@ impl LiquidationConsumer {
     }
 
     async fn execute_liquidation(&self, event: LiquidationEvent) -> Result<()> {
-        let position_id = Uuid::parse_str(&event.position_id)?;
-        let user_id = Uuid::parse_str(&event.user_id)?;
-        let margin = Decimal::from_str(&event.margin)?;
-
-        let position_opt = self.position_repository.find_by_user_symbol_side(user_id, &event.symbol, &event.side).await?;
+        let position_opt = self.position_repository.find_by_user_symbol_side(event.user_id, &event.symbol, &event.side).await?;
         if let Some(mut position) = position_opt {
             if position.size > Decimal::ZERO {
                 position.size = Decimal::ZERO;
@@ -87,11 +91,11 @@ impl LiquidationConsumer {
                 self.position_repository.update(position).await?;
 
                 let mut client = self.account_client.lock().await;
-                let _ = client.release_margin(user_id.to_string(), margin.to_string(), position_id.to_string()).await;
-                let _ = client.adjust_margin(user_id.to_string(), (-margin).to_string(), "LIQUIDATION".to_string()).await;
+                let _ = client.release_margin(event.user_id.to_string(), event.margin.to_string(), event.position_id.to_string()).await;
+                let _ = client.adjust_margin(event.user_id.to_string(), (-event.margin).to_string(), "PNL".to_string()).await;
 
                 tracing::info!(
-                    user_id = %user_id,
+                    user_id = %event.user_id,
                     symbol = %event.symbol,
                     side = %event.side,
                     "Position successfully closed out by liquidator"

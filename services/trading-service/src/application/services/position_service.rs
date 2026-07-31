@@ -31,7 +31,7 @@ impl PositionService {
     }
 
     fn calculate_liq_price(&self, entry_price: Decimal, margin: Decimal, size: Decimal, side: &str) -> Decimal {
-        let mmr = Decimal::new(5, 3); // MMR = 0.005 (0.5%)
+        let mmr = Decimal::new(5, 3);
         let one = Decimal::ONE;
         
         if size == Decimal::ZERO {
@@ -77,7 +77,7 @@ impl PositionUseCase for PositionService {
         let opposite_side = if trade_side == "BUY" { "SHORT" } else { "LONG" };
         let position_side = if trade_side == "BUY" { "LONG" } else { "SHORT" };
 
-        let mut opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;
+        let opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;
 
         if let Some(mut existing) = opposite_pos {
             if existing.size > trade_qty {
@@ -98,8 +98,12 @@ impl PositionUseCase for PositionService {
                 let updated = self.repository.update(existing).await?;
 
                 let mut client = self.account_client.lock().await;
-                let _ = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await;
-                let _ = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await;
+                if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
+                    tracing::error!("Failed to release margin: {:?}", e);
+                }
+                if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
+                    tracing::error!("Failed to adjust realized PnL: {:?}", e);
+                }
 
                 return Ok(updated);
             } else {
@@ -120,40 +124,54 @@ impl PositionUseCase for PositionService {
                 self.repository.update(existing).await?;
 
                 let mut client = self.account_client.lock().await;
-                let _ = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await;
-                let _ = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await;
+                if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
+                    tracing::error!("Failed to release margin: {:?}", e);
+                }
+                if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
+                    tracing::error!("Failed to adjust realized PnL: {:?}", e);
+                }
 
                 if remaining_qty > Decimal::ZERO {
                     let new_margin = (remaining_qty * trade_price) / Decimal::from(leverage);
                     let liq_price = self.calculate_liq_price(trade_price, new_margin, remaining_qty, position_side);
 
-                    let new_pos = Position {
-                        id: Uuid::new_v4(),
-                        user_id,
-                        symbol: symbol.to_string(),
-                        side: position_side.to_string(),
-                        size: remaining_qty,
-                        entry_price: trade_price,
-                        margin: new_margin,
-                        leverage,
-                        liquidation_price: liq_price,
-                        unrealized_pnl: Decimal::ZERO,
-                        realized_pnl: Decimal::ZERO,
-                        margin_mode: "ISOLATED".to_string(),
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                    };
-
-                    let created = self.repository.create(new_pos).await?;
-                    let _ = client.lock_margin(user_id.to_string(), new_margin.to_string(), order_id.to_string()).await;
-                    return Ok(created);
+                    let existing_pos = self.repository.find_by_user_symbol_side(user_id, symbol, position_side).await?;
+                    if let Some(mut ext) = existing_pos {
+                        ext.size = remaining_qty;
+                        ext.entry_price = trade_price;
+                        ext.margin = new_margin;
+                        ext.leverage = leverage;
+                        ext.liquidation_price = liq_price;
+                        ext.updated_at = Utc::now();
+                        let updated = self.repository.update(ext).await?;
+                        return Ok(updated);
+                    } else {
+                        let new_pos = Position {
+                            id: Uuid::new_v4(),
+                            user_id,
+                            symbol: symbol.to_string(),
+                            side: position_side.to_string(),
+                            size: remaining_qty,
+                            entry_price: trade_price,
+                            margin: new_margin,
+                            leverage,
+                            liquidation_price: liq_price,
+                            unrealized_pnl: Decimal::ZERO,
+                            realized_pnl: Decimal::ZERO,
+                            margin_mode: "ISOLATED".to_string(),
+                            created_at: Utc::now(),
+                            updated_at: Utc::now(),
+                        };
+                        let created = self.repository.create(new_pos).await?;
+                        return Ok(created);
+                    }
                 }
 
                 return Ok(self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?.unwrap());
             }
         }
 
-        let mut existing_pos = self.repository.find_by_user_symbol_side(user_id, symbol, position_side).await?;
+        let existing_pos = self.repository.find_by_user_symbol_side(user_id, symbol, position_side).await?;
 
         if let Some(mut existing) = existing_pos {
             let new_size = existing.size + trade_qty;
@@ -167,10 +185,6 @@ impl PositionUseCase for PositionService {
             existing.updated_at = Utc::now();
 
             let updated = self.repository.update(existing).await?;
-
-            let mut client = self.account_client.lock().await;
-            let _ = client.lock_margin(user_id.to_string(), added_margin.to_string(), order_id.to_string()).await;
-
             Ok(updated)
         } else {
             let new_margin = (trade_qty * trade_price) / Decimal::from(leverage);
@@ -194,10 +208,6 @@ impl PositionUseCase for PositionService {
             };
 
             let created = self.repository.create(new_pos).await?;
-
-            let mut client = self.account_client.lock().await;
-            let _ = client.lock_margin(user_id.to_string(), new_margin.to_string(), order_id.to_string()).await;
-
             Ok(created)
         }
     }

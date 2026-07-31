@@ -59,6 +59,7 @@ pub async fn bootstrap() -> Result<(
 
     let grpc_service = RiskGrpcService {
         account_client: account_client.clone(),
+        db_pool: db.pool().clone(),
     };
 
     let grpc_server = Server::builder()
@@ -77,13 +78,13 @@ pub async fn bootstrap() -> Result<(
     let position_repository = Arc::new(PositionRepository::new(db.pool().clone()));
     let trade_consumer = TradeConsumer::new(
         &brokers,
-        "risk-engine-trade-group",
+        "risk-engine-trade-group-v2",
         position_repository.clone(),
     )?;
 
     let liquidation_consumer = LiquidationConsumer::new(
         &brokers,
-        "risk-engine-liq-group",
+        "risk-engine-liq-group-v2",
         position_repository,
     )?;
 
