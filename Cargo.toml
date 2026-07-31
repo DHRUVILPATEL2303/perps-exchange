@@ -66,9 +66,11 @@ opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"] }
 tracing-opentelemetry = "0.28"
 prometheus = "0.13"
 
-#kafka 
+#kafka
 rdkafka = { version = "0.36", features = ["tokio"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 
 actix-ws = "0.3"
 tokio-stream = "0.1"
+
+wtransport = { version = "0.1.13", features = ["self-signed"] }

@@ -20,6 +20,7 @@ pub enum OrderStatus {
     PartiallyFilled,
     Filled,
     Cancelled,
+    New
 }
 
 #[derive(Debug, Clone)]

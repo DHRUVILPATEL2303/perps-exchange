@@ -146,4 +146,21 @@ impl OrderBook {
         book_side.retain(|_, level| !level.is_empty());
         result
     }
+
+    pub fn get_l2_depth(&self, levels: usize) -> (Vec<(Decimal, Decimal)>, Vec<(Decimal, Decimal)>) {
+        let mut bids = Vec::new();
+        for (price, level) in self.bids.iter().rev().take(levels) {
+            let total_qty: Decimal = level.iter().map(|o| o.remaining_quantity()).sum();
+            bids.push((*price, total_qty));
+        }
+
+        let mut asks = Vec::new();
+        for (price, level) in self.asks.iter().take(levels) {
+            let total_qty: Decimal = level.iter().map(|o| o.remaining_quantity()).sum();
+            asks.push((*price, total_qty));
+        }
+
+        (bids, asks)
+    }
+
 }

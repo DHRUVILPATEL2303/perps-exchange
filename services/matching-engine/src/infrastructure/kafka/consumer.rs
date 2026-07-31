@@ -1,21 +1,21 @@
-use anyhow::Result;
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::ClientConfig;
-use rdkafka::message::Message;
-use rdkafka::config::RDKafkaLogLevel;
-use serde::Deserialize;
-use rust_decimal::Decimal;
-use rdkafka::consumer::CommitMode;
-use futures_util::StreamExt;
-use uuid::Uuid;
-use std::str::FromStr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use std::collections::HashMap;
 use crate::application::services::matching_service::OrderBook;
 use crate::domain::entities::order::{BookOrder, OrderSide, OrderStatus, OrderType};
 use crate::domain::entities::trade::Trade;
 use crate::infrastructure::kafka::producer::TradeProducer;
+use anyhow::Result;
+use chrono::Utc;
+use futures_util::StreamExt;
+use rdkafka::ClientConfig;
+use rdkafka::config::RDKafkaLogLevel;
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::message::Message;
+use rust_decimal::Decimal;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct IncomingOrder {
@@ -93,101 +93,84 @@ impl OrderConsumer {
                                 };
 
                                 let symbol = incoming.symbol.clone();
+                                let side = match incoming.side.as_str() {
+                                    "BUY" => OrderSide::Buy,
+                                    "SELL" => OrderSide::Sell,
+                                    _ => OrderSide::Buy,
+                                };
 
                                 if incoming.action == Some("CANCEL".to_string()) {
                                     let mut books = order_books.lock().await;
                                     let book = books
                                         .entry(symbol.clone())
                                         .or_insert_with(|| OrderBook::new(symbol.clone()));
-
-                                    let cancel_res = book.cancel_order(order_id, &OrderSide::Buy)
-                                        .or_else(|| book.cancel_order(order_id, &OrderSide::Sell));
-                                    
-                                    if let Some((orig_price, orig_qty)) = cancel_res {
-                                        let cancel_event = Trade {
+                                    if let Some((price, qty)) = book.cancel_order(order_id, &side) {
+                                        let cancel_trade = Trade {
                                             id: Uuid::new_v4(),
                                             symbol: symbol.clone(),
                                             maker_order_id: order_id,
-                                            taker_order_id: order_id,
+                                            taker_order_id: Uuid::nil(),
                                             maker_user_id: user_id,
-                                            taker_user_id: user_id,
-                                            price: orig_price,
-                                            quantity: orig_qty,
+                                            taker_user_id: Uuid::nil(),
+                                            price,
+                                            quantity: qty,
                                             taker_side: "CANCEL".to_string(),
-                                            executed_at: chrono::Utc::now(),
+                                            executed_at: Utc::now(),
                                         };
+                                        let _ = producer.publish_trade(&cancel_trade).await;
 
-                                        if let Err(e) = producer.publish_trade(&cancel_event).await {
-                                            tracing::error!("Failed to publish cancel event: {}", e);
-                                        }
+                                        let (bids, asks) = book.get_l2_depth(10);
+                                        let _ = producer.publish_depth(&symbol, bids, asks).await;
                                     }
-                                    let _ = consumer.commit_message(&msg, CommitMode::Async);
-                                    continue;
+                                } else {
+                                    let mut books = order_books.lock().await;
+                                    let book = books
+                                        .entry(symbol.clone())
+                                        .or_insert_with(|| OrderBook::new(symbol.clone()));
+
+                                    let limit_price = if incoming.order_type == "LIMIT" {
+                                        Some(Decimal::from_str(&incoming.price).unwrap())
+                                    } else {
+                                        None
+                                    };
+
+                                    let taker = BookOrder {
+                                        id: order_id,
+                                        user_id,
+                                        symbol: symbol.clone(),
+                                        side: match side {
+                                            OrderSide::Buy => OrderSide::Buy,
+                                            OrderSide::Sell => OrderSide::Sell,
+                                        },
+                                        order_type: match incoming.order_type.as_str() {
+                                            "LIMIT" => OrderType::Limit,
+                                            "MARKET" => OrderType::Market,
+                                            _ => OrderType::Limit,
+                                        },
+                                        price: limit_price.unwrap_or(Decimal::ZERO),
+                                        quantity: Decimal::from_str(&incoming.quantity).unwrap(),
+                                        filled_quantity: Decimal::ZERO,
+                                        status: OrderStatus::New,
+                                        created_at: Utc::now(),
+                                    };
+
+                                    let trades = book.match_order(taker);
+                                    for trade in trades {
+                                        let _ = producer.publish_trade(&trade).await;
+                                    }
+
+                                    let (bids, asks) = book.get_l2_depth(10);
+                                    let _ = producer.publish_depth(&symbol, bids, asks).await;
                                 }
-
-                                let order = match Self::parse_order(incoming) {
-                                    Ok(o) => o,
-                                    Err(e) => {
-                                        tracing::error!("Order parse error: {}", e);
-                                        continue;
-                                    }
-                                };
-
-                                let mut books = order_books.lock().await;
-                                let book = books
-                                    .entry(symbol.clone())
-                                    .or_insert_with(|| OrderBook::new(symbol.clone()));
-
-                                let trades = book.match_order(order);
-
-                                for trade in trades {
-                                    tracing::info!(
-                                        symbol = %trade.symbol,
-                                        price = %trade.price,
-                                        qty = %trade.quantity,
-                                        "Trade executed"
-                                    );
-                                    if let Err(e) = producer.publish_trade(&trade).await {
-                                        tracing::error!("Failed to publish trade: {}", e);
-                                    }
-                                }
-
-                                let _ = consumer.commit_message(&msg, CommitMode::Async);
                             }
                             Err(e) => {
-                                tracing::error!("Deserialize error: {}", e);
+                                tracing::error!("Failed to deserialize incoming order: {}", e);
                             }
                         }
+                        let _ = consumer.commit_message(&msg, CommitMode::Async);
                     }
                 }
             }
         }
-    }
-
-    fn parse_order(incoming: IncomingOrder) -> Result<BookOrder> {
-        let side = match incoming.side.as_str() {
-            "BUY" | "LONG" => OrderSide::Buy,
-            "SELL" | "SHORT" => OrderSide::Sell,
-            _ => anyhow::bail!("Unknown side: {}", incoming.side),
-        };
-
-        let order_type = match incoming.order_type.as_str() {
-            "LIMIT" => OrderType::Limit,
-            "MARKET" => OrderType::Market,
-            _ => anyhow::bail!("Unknown order type: {}", incoming.order_type),
-        };
-
-        Ok(BookOrder {
-            id: Uuid::parse_str(&incoming.id)?,
-            user_id: Uuid::parse_str(&incoming.user_id)?,
-            symbol: incoming.symbol,
-            side,
-            order_type,
-            price: Decimal::from_str(&incoming.price)?,
-            quantity: Decimal::from_str(&incoming.quantity)?,
-            filled_quantity: Decimal::ZERO,
-            status: OrderStatus::Open,
-            created_at: chrono::Utc::now(),
-        })
     }
 }

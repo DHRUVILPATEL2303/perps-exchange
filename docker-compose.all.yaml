@@ -59,6 +59,14 @@ services:
       KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
 
+  init-kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: perps-init-kafka
+    depends_on:
+      kafka:
+        condition: service_started
+    entrypoint: [ "bash", "-c", "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1" ]
+
   market-service:
     build:
       context: .
@@ -117,6 +125,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   risk-engine-service:
     build:
@@ -139,6 +149,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   matching-engine:
     build:
@@ -155,6 +167,8 @@ services:
     depends_on:
       kafka:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   oracle-aggregator:
     build:
@@ -173,6 +187,8 @@ services:
         condition: service_started
       redis:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   binance-liquidation:
     build:
@@ -189,6 +205,8 @@ services:
     depends_on:
       kafka:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   api-gateway:
     build:

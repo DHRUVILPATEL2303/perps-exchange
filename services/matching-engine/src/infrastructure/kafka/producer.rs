@@ -3,6 +3,15 @@ use rdkafka::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::time::Duration;
 use crate::domain::entities::trade::Trade;
+use rust_decimal::Decimal;
+
+#[derive(serde::Serialize)]
+pub struct DepthUpdate {
+    pub symbol: String,
+    pub bids: Vec<(Decimal, Decimal)>,
+    pub asks: Vec<(Decimal, Decimal)>,
+    pub timestamp: i64,
+}
 
 pub struct TradeProducer {
     producer: FutureProducer,
@@ -27,6 +36,28 @@ impl TradeProducer {
                 FutureRecord::to("execution-reports")
                     .payload(payload.as_bytes())
                     .key(key.as_bytes()),
+                Duration::from_secs(5),
+            )
+            .await
+            .map_err(|(e, _)| anyhow::anyhow!("Kafka send error: {}", e))?;
+
+        Ok(())
+    }
+
+    pub async fn publish_depth(&self, symbol: &str, bids: Vec<(Decimal, Decimal)>, asks: Vec<(Decimal, Decimal)>) -> Result<()> {
+        let update = DepthUpdate {
+            symbol: symbol.to_string(),
+            bids,
+            asks,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+        };
+        let payload = serde_json::to_string(&update)?;
+
+        self.producer
+            .send(
+                FutureRecord::to("orderbook-depth")
+                    .payload(payload.as_bytes())
+                    .key(symbol.as_bytes()),
                 Duration::from_secs(5),
             )
             .await

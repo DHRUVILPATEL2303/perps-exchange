@@ -11,8 +11,8 @@ port = 50052
 [market_service]
 endpoint = "http://127.0.0.1:50051"
 
-[kafka]
-brokers = ["127.0.0.1:9092"]
+# [kafka]
+# brokers = ["127.0.0.1:9092"]
 
 [database]
 host = "localhost"
