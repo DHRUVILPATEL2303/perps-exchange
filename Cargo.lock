@@ -1842,6 +1842,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "matching-engine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "config 0.1.0",
+ "futures-util",
+ "prost 0.14.4",
+ "proto",
+ "rdkafka",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "telemetry",
+ "tokio",
+ "tonic 0.14.6",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

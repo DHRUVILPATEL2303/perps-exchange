@@ -1,0 +1,25 @@
+app_name = "Matching Engine"
+environment = "development"
+
+[server]
+host = "127.0.0.1"
+port = 8086
+
+[grpc]
+host = "127.0.0.1"
+port = 50056
+
+[kafka]
+brokers = ["127.0.0.1:9092"]
+
+[database]
+host = "localhost"
+port = 5432
+username = "postgres"
+password = "postgres"
+database = "perps_exchange"
+auto_migrate = false
+
+[redis]
+host = "127.0.0.1"
+port = 6379
