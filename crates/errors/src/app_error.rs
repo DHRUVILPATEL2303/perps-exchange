@@ -40,6 +40,8 @@ pub enum RepositoryError {
 
     #[error("Unknown repository error")]
     Unknown,
+
+ 
 }
 
 #[derive(Debug, Error)]
