@@ -39,59 +39,19 @@ impl AccountUseCase for AccountService {
     }
 
     async fn lock_margin(&self, user_id: Uuid, asset: &str, amount: Decimal) -> Result<(), ServiceError> {
-        let mut account = self.get_balance(user_id, asset).await?;
-        let available = account.balance - account.frozen;
-        
-        if available < amount {
-            return Err(ServiceError::InsufficientBalance);
-        }
-
-        account.frozen += amount;
-        account.updated_at = Utc::now();
-        self.repository.update(account).await?;
-        
+        self.repository.lock_margin_atomic(user_id, asset, amount).await?;
         Ok(())
     }
 
     async fn release_margin(&self, user_id: Uuid, asset: &str, amount: Decimal) -> Result<(), ServiceError> {
-        let mut account = self.get_balance(user_id, asset).await?;
-        
-        if account.frozen < amount {
-            account.frozen = Decimal::ZERO;
-        } else {
-            account.frozen -= amount;
-        }
-
-        account.updated_at = Utc::now();
-        self.repository.update(account).await?;
-        
+        self.repository.release_margin_atomic(user_id, asset, amount).await?;
         Ok(())
     }
 
     async fn adjust_margin(&self, user_id: Uuid, asset: &str, amount: Decimal, adjustment_type: &str) -> Result<Account, ServiceError> {
-        let mut account = self.get_balance(user_id, asset).await?;
-
-        match adjustment_type {
-            "DEPOSIT" => {
-                account.balance += amount;
-            }
-            "WITHDRAW" => {
-                let available = account.balance - account.frozen;
-                if available < amount {
-                    return Err(ServiceError::InsufficientBalance);
-                }
-                account.balance -= amount;
-            }
-            "PNL" | "FUNDING" => {
-                account.balance += amount;
-            }
-            _ => return Err(ServiceError::InvalidStatus),
-        }
-
-        account.updated_at = Utc::now();
-        let updated = self.repository.update(account).await?;
-        
+        let updated = self.repository.adjust_margin_atomic(user_id, asset, amount, adjustment_type).await?;
         Ok(updated)
     }
+
 
 }

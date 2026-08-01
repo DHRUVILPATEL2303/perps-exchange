@@ -97,15 +97,34 @@ impl GrpcTradingService for TradingGrpcService {
             action: "PLACE".to_string(),
         };
 
-        self.order_producer.publish_order(&kafka_event)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        if let Err(publish_err) = self.order_producer.publish_order(&kafka_event).await {
+            tracing::error!("Failed to publish order {} to Kafka: {}. Executing SAGA compensating rollback...", order_id, publish_err);
+
+            {
+                let mut acc_client = self.account_client.lock().await;
+                if let Err(rollback_err) = acc_client.release_margin(
+                    req.user_id.clone(),
+                    check_res.required_margin.clone(),
+                    order_id.to_string(),
+                ).await {
+                    tracing::error!("SAGA CRITICAL ERROR: Failed to release margin rollback for user {} order {}: {:?}", req.user_id, order_id, rollback_err);
+                }
+            }
+
+        
+            if let Err(db_err) = self.order_repository.update_status(order_id, "FAILED").await {
+                tracing::error!("SAGA ERROR: Failed to mark order status as FAILED for order {}: {:?}", order_id, db_err);
+            }
+
+            return Err(Status::internal(format!("Failed to submit order to matching engine: {}", publish_err)));
+        }
 
         Ok(Response::new(PlaceOrderResponse {
             order_id: order_id.to_string(),
             status: "OPEN".to_string(),
             error_message: None,
         }))
+
     }
 
     async fn cancel_order(
