@@ -34,6 +34,7 @@ COPY --from=builder /usr/src/perps-exchange/target/release/matching-engine /usr/
 COPY --from=builder /usr/src/perps-exchange/target/release/oracle-aggregator /usr/local/bin/
 COPY --from=builder /usr/src/perps-exchange/target/release/binance-liquidation /usr/local/bin/
 COPY --from=builder /usr/src/perps-exchange/target/release/api-gateway /usr/local/bin/
+COPY --from=builder /usr/src/perps-exchange/target/release/chart-service /usr/local/bin/
 
 COPY --from=builder /usr/src/perps-exchange/configs /app/configs
 COPY --from=builder /usr/src/perps-exchange/configs/common.docker.toml /app/configs/common.toml

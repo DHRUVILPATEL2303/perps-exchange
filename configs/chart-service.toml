@@ -1,5 +1,9 @@
 app_name = "Chart Service"
 
+[server]
+host = "127.0.0.1"
+port = 8088
+
 [database]
 host = "127.0.0.1"
 port = 5433
@@ -8,9 +12,9 @@ username = "postgres"
 password = "postgres"
 auto_migrate = true
 
-[kafka]
-brokers = ["127.0.0.1:9092"]
-
+[redis]
+host = "127.0.0.1"
+port = 6379
 
 [grpc]
 host = "127.0.0.1"

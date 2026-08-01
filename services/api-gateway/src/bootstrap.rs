@@ -32,6 +32,9 @@ struct KafkaTradeEvent {
     taker_user_id: String,
 }
 
+use proto::chart::chart_service_client::ChartServiceClient;
+
+
 pub async fn run() -> std::io::Result<()> {
     tracing::info!("Starting API Gateway...");
 
@@ -40,6 +43,7 @@ pub async fn run() -> std::io::Result<()> {
     let market_url = std::env::var("MARKET_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
     let trading_url = std::env::var("TRADING_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50052".to_string());
     let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+    let chart_url = std::env::var("CHART_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50058".to_string());
 
     let market_client = MarketServiceClient::connect(market_url)
         .await
@@ -53,6 +57,10 @@ pub async fn run() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to Account Service");
 
+    let chart_client = ChartServiceClient::connect(chart_url)
+        .await
+        .expect("Failed to connect to Chart Service");
+
     let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
     let redis_client = redis::Client::open(redis_url).expect("Failed to open Redis client");
 
@@ -65,6 +73,7 @@ pub async fn run() -> std::io::Result<()> {
         trading_client,
         redis_client: redis_client.clone(),
         ws_sessions: ws_sessions.clone(),
+        chart_client,
     });
 
 

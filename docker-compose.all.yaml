@@ -232,9 +232,37 @@ services:
       - MARKET_SERVICE_URL=http://market-service:50051
       - TRADING_SERVICE_URL=http://trading-service:50052
       - ACCOUNT_SERVICE_URL=http://account-service:50053
+      - CHART_SERVICE_URL=http://chart-service:50058
     depends_on:
       trading-service:
         condition: service_started
+      chart-service:
+        condition: service_started
+
+  chart-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chart-service
+    command: ["chart-service"]
+    ports:
+      - "50058:50058"
+    volumes:
+      - ./configs/chart-service.toml:/app/configs/chart-service.toml
+    environment:
+      - RUST_LOG=info
+      - DATABASE__HOST=timescaledb
+      - DATABASE__PORT=5432
+      - DATABASE__DATABASE=perps_charts
+      - REDIS__HOST=redis
+      - GRPC__HOST=0.0.0.0
+    depends_on:
+      timescaledb:
+        condition: service_started
+      kafka:
+        condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

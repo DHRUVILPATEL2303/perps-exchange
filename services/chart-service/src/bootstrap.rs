@@ -10,7 +10,6 @@ use crate::grpc::server::ChartGrpcService;
 use crate::infrastructure::kafka::consumer::run_trade_consumer;
 
 pub async fn run() -> Result<()> {
-
     let config = AppConfig::load("chart-service").expect("Failed to load config");
 
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
@@ -31,6 +30,7 @@ pub async fn run() -> Result<()> {
 
     let create_db_query = format!("CREATE DATABASE {}", config.database.database);
     let _ = sqlx::query(&create_db_query).execute(&mut conn).await;
+
     let db = Arc::new(
         DatabaseManager::new(&config.database)
             .await
@@ -46,13 +46,21 @@ pub async fn run() -> Result<()> {
 
     println!("Chart Service migrations successfully completed.");
 
+    let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
+    let redis_client = redis::Client::open(redis_url).expect("Failed to open Redis client");
+
     let db_pool = db.pool().clone();
     let brokers = config.kafka.brokers.join(",");
     
     tokio::spawn(async move {
         println!("Starting Kafka trade consumer for Chart Service...");
-        if let Err(e) = run_trade_consumer(&brokers, db_pool).await {
-            eprintln!("Kafka trade consumer failed: {:?}", e);
+        loop {
+            if let Err(e) = run_trade_consumer(&brokers, db_pool.clone(), redis_client.clone()).await {
+                eprintln!("Kafka trade consumer failed: {:?}. Retrying in 5 seconds...", e);
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            } else {
+                break;
+            }
         }
     });
 
