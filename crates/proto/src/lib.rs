@@ -15,3 +15,7 @@ pub mod trading {
 pub mod risk {
     tonic::include_proto!("risk");
 }
+
+pub mod chart {
+    tonic::include_proto!("chart");
+}
