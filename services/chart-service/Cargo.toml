@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
+tonic = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
@@ -19,3 +20,4 @@ database = { path = "../../crates/database" }
 config = { path = "../../crates/config" }
 errors = { path = "../../crates/errors" }
 telemetry = { path = "../../crates/telemetry" }
+proto = { path = "../../crates/proto" }

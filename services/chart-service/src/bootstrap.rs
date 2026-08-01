@@ -1,13 +1,21 @@
 use std::io::Result;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use config::app::AppConfig;
 use database::manager::DatabaseManager;
 use sqlx::{Connection, PgConnection};
+use tonic::transport::Server;
+use proto::chart::chart_service_server::ChartServiceServer;
+use crate::grpc::server::ChartGrpcService;
 use crate::infrastructure::kafka::consumer::run_trade_consumer;
 
 pub async fn run() -> Result<()> {
+
     let config = AppConfig::load("chart-service").expect("Failed to load config");
 
+    let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
+        .parse()
+        .expect("Invalid gRPC address");
 
     let default_db_url = format!(
         "postgres://{}:{}@{}:{}/postgres",
@@ -23,7 +31,6 @@ pub async fn run() -> Result<()> {
 
     let create_db_query = format!("CREATE DATABASE {}", config.database.database);
     let _ = sqlx::query(&create_db_query).execute(&mut conn).await;
-
     let db = Arc::new(
         DatabaseManager::new(&config.database)
             .await
@@ -49,9 +56,18 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    shutdown_signal().await;
-    println!("Chart Service shutting down.");
+    let grpc_service = ChartGrpcService {
+        db_pool: db.pool().clone(),
+    };
 
+    println!("gRPC Server started at {}", grpc_addr);
+    Server::builder()
+        .add_service(ChartServiceServer::new(grpc_service))
+        .serve_with_shutdown(grpc_addr, shutdown_signal())
+        .await
+        .map_err(std::io::Error::other)?;
+
+    println!("Chart Service shutting down.");
     Ok(())
 }
 

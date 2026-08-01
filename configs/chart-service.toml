@@ -10,3 +10,8 @@ auto_migrate = true
 
 [kafka]
 brokers = ["127.0.0.1:9092"]
+
+
+[grpc]
+host = "127.0.0.1"
+port = 50058

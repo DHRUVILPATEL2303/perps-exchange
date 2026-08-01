@@ -726,6 +726,7 @@ dependencies = [
  "database",
  "errors",
  "futures-util",
+ "proto",
  "rdkafka",
  "rust_decimal",
  "serde",
@@ -733,6 +734,7 @@ dependencies = [
  "sqlx",
  "telemetry",
  "tokio",
+ "tonic 0.14.6",
  "tracing",
 ]
 
