@@ -15,7 +15,7 @@ members = [
     "services/market-service",
     "services/trading-service",
     "services/binance-liquidation", "services/oracle-aggregator",
-    "services/matching-engine", "services/risk-engine-service",
+    "services/matching-engine", "services/risk-engine-service", "services/chart-service",
 ]
 [workspace.package]
 edition = "2024"

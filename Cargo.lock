@@ -717,6 +717,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chart-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "config 0.1.0",
+ "errors",
+ "rdkafka",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "telemetry",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,12 @@
+app_name = "Chart Service"
+
+[database]
+host = "127.0.0.1"
+port = 5433
+database = "perps_charts"
+username = "postgres"
+password = "postgres"
+auto_migrate = true
+
+[kafka]
+brokers = ["127.0.0.1:9092"]

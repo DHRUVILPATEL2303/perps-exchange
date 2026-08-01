@@ -35,6 +35,7 @@
         let wt;
         let wtWriter;
 
+        // Helper to output to logs
         function log(elementId, msg) {
             const el = document.getElementById(elementId);
             el.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
@@ -74,8 +75,8 @@
 
         // WT Connection
         async function connectWT() {
-            // Updated fingerprint bytes matching the restarted gateway instance
-            const hashBytes = new Uint8Array([81, 169, 195, 242, 115, 8, 206, 60, 40, 210, 235, 230, 21, 219, 238, 172, 108, 85, 35, 75, 92, 81, 229, 179, 212, 246, 32, 85, 63, 33, 82, 210]);
+            // Latest fingerprint bytes
+            const hashBytes = new Uint8Array([34, 58, 129, 31, 201, 80, 93, 136, 41, 236, 98, 211, 179, 192, 97, 215, 39, 58, 199, 91, 101, 160, 148, 60, 212, 205, 233, 205, 124, 48, 157, 220]);
             
             try {
                 wt = new WebTransport("https://127.0.0.1:4433/", {
