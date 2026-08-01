@@ -292,6 +292,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "actix-ws",
+ "anyhow",
  "async-trait",
  "chrono",
  "config 0.1.0",
@@ -300,6 +301,7 @@ dependencies = [
  "futures-util",
  "prost 0.14.4",
  "proto",
+ "rdkafka",
  "redis",
  "rust_decimal",
  "serde",

@@ -7,7 +7,30 @@ use proto::account::account_service_client::AccountServiceClient;
 use proto::trading::trading_service_client::TradingServiceClient;
 use crate::presentation::router::router::configure_routes;
 use crate::state::AppState;
+use crate::presentation::handlers::wt_server::run_webtransport_server;
 use futures_util::StreamExt;
+use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::message::Message;
+use serde::{Deserialize, Serialize};
+use redis::AsyncCommands;
+#[derive(Serialize,Deserialize)]
+struct KafkaDepthUpdate {
+    symbol: String,
+    bids: Vec<(rust_decimal::Decimal, rust_decimal::Decimal)>,
+    asks: Vec<(rust_decimal::Decimal, rust_decimal::Decimal)>,
+    timestamp: i64,
+}
+
+#[derive(Serialize,Deserialize)]
+struct KafkaTradeEvent {
+    symbol: String,
+    price: rust_decimal::Decimal,
+    quantity: rust_decimal::Decimal,
+    taker_side: String,
+    maker_user_id: String,
+    taker_user_id: String,
+}
 
 pub async fn run() -> std::io::Result<()> {
     tracing::info!("Starting API Gateway...");
@@ -44,28 +67,64 @@ pub async fn run() -> std::io::Result<()> {
         ws_sessions: ws_sessions.clone(),
     });
 
-    let ws_sessions_for_broadcast = ws_sessions.clone();
-    let redis_client_for_broadcast = redis_client.clone();
+
+    let redis_for_wt = redis_client.clone();
     tokio::spawn(async move {
-        loop {
-            if let Ok(mut pubsub) = redis_client_for_broadcast.get_async_pubsub().await {
-                if pubsub.subscribe("price-ticks").await.is_ok() {
-                    let mut msg_stream = pubsub.on_message();
-                    while let Some(msg) = msg_stream.next().await {
-                        if let Ok(payload) = msg.get_payload::<String>() {
-                            let mut sessions = ws_sessions_for_broadcast.lock().await;
-                            let mut active_sessions = Vec::new();
-                            for mut session in sessions.drain(..) {
-                                if session.text(payload.clone()).await.is_ok() {
-                                    active_sessions.push(session);
+        if let Err(e) = run_webtransport_server(redis_for_wt).await {
+            tracing::error!("WebTransport Server crashed: {:?}", e);
+        }
+    });
+
+   
+    let brokers = config.kafka.brokers.join(",");
+    let redis_for_kafka = redis_client.clone();
+    tokio::spawn(async move {
+        let consumer: StreamConsumer = ClientConfig::new()
+            .set("bootstrap.servers", &brokers)
+            .set("group.id", "gateway-kafka-group")
+            .set("auto.offset.reset", "latest")
+            .set("enable.auto.commit", "true")
+            .create()
+            .expect("Failed to create Kafka consumer for gateway");
+
+        consumer.subscribe(&["orderbook-depth", "execution-reports"])
+            .expect("Failed to subscribe to Kafka topics in gateway");
+
+        let mut stream = consumer.stream();
+        while let Some(msg_res) = stream.next().await {
+            if let Ok(msg) = msg_res {
+                if let Some(payload) = msg.payload() {
+                    let mut redis_conn = match redis_for_kafka.get_multiplexed_async_connection().await {
+                        Ok(conn) => conn,
+                        Err(_) => continue,
+                    };
+
+                    match msg.topic() {
+                        "orderbook-depth" => {
+                            if let Ok(depth) = serde_json::from_slice::<KafkaDepthUpdate>(payload) {
+                                if let Ok(json_str) = serde_json::to_string(&depth) {
+                                    let channel = format!("orderbook:{}", depth.symbol);
+                                    let _: Result<(), _> = redis_conn.publish(channel, json_str).await;
                                 }
                             }
-                            *sessions = active_sessions;
                         }
+                        "execution-reports" => {
+                            if let Ok(trade) = serde_json::from_slice::<KafkaTradeEvent>(payload) {
+                                if let Ok(json_str) = serde_json::to_string(&trade) {
+                                    let channel = format!("trades:{}", trade.symbol);
+                                    let _: Result<(), _> = redis_conn.publish(channel, json_str.clone()).await;
+
+                                    let private_maker = format!("private:{}", trade.maker_user_id);
+                                    let private_taker = format!("private:{}", trade.taker_user_id);
+                                    let _: Result<(), _> = redis_conn.publish(private_maker, json_str.clone()).await;
+                                    let _: Result<(), _> = redis_conn.publish(private_taker, json_str).await;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     });
 

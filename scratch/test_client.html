@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WS and WT Tester</title>
+    <style>
+        body { font-family: sans-serif; background: #121214; color: #e1e1e6; padding: 20px; }
+        .log { background: #1c1c1f; border: 1px solid #2f2f33; padding: 10px; height: 250px; overflow-y: scroll; margin-bottom: 20px; font-family: monospace; font-size: 12px; }
+        button { background: #3e3e47; color: white; border: none; padding: 8px 15px; margin-right: 10px; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #4f4f5a; }
+        h3 { margin-top: 0; color: #a9a9b3; }
+        .status { font-weight: bold; }
+        .connected { color: #4ade80; }
+        .disconnected { color: #f87171; }
+    </style>
+</head>
+<body>
+    <h2>WebSockets vs WebTransport Real-Time Tester</h2>
+    
+    <div>
+        <h3>WebSocket Connection (<span id="ws-status" class="status disconnected">Disconnected</span>)</h3>
+        <button onclick="connectWS()">Connect WebSocket</button>
+        <button onclick="subscribeWS()">Subscribe BTCUSDT</button>
+        <div id="ws-log" class="log"></div>
+    </div>
+
+    <div>
+        <h3>WebTransport Connection (<span id="wt-status" class="status disconnected">Disconnected</span>)</h3>
+        <button onclick="connectWT()">Connect WebTransport</button>
+        <button onclick="subscribeWT()">Subscribe BTCUSDT</button>
+        <div id="wt-log" class="log"></div>
+    </div>
+
+    <script>
+        let ws;
+        let wt;
+        let wtWriter;
+
+        function log(elementId, msg) {
+            const el = document.getElementById(elementId);
+            el.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // WS Connection
+        function connectWS() {
+            ws = new WebSocket("ws://127.0.0.1:8080/ws");
+            ws.onopen = () => {
+                document.getElementById("ws-status").className = "status connected";
+                document.getElementById("ws-status").innerText = "Connected";
+                log("ws-log", "WebSocket connected!");
+            };
+            ws.onmessage = (event) => {
+                log("ws-log", "Received: " + event.data);
+            };
+            ws.onclose = () => {
+                document.getElementById("ws-status").className = "status disconnected";
+                document.getElementById("ws-status").innerText = "Disconnected";
+                log("ws-log", "WebSocket disconnected.");
+            };
+        }
+
+        function subscribeWS() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const subMsg = JSON.stringify({
+                    action: "subscribe",
+                    channels: ["orderbook:BTCUSDT", "trades:BTCUSDT"]
+                });
+                ws.send(subMsg);
+                log("ws-log", "Sent subscription for orderbook & trades.");
+            } else {
+                log("ws-log", "Error: WebSocket is not open.");
+            }
+        }
+
+        // WT Connection
+        async function connectWT() {
+            // Updated fingerprint bytes matching the restarted gateway instance
+            const hashBytes = new Uint8Array([81, 169, 195, 242, 115, 8, 206, 60, 40, 210, 235, 230, 21, 219, 238, 172, 108, 85, 35, 75, 92, 81, 229, 179, 212, 246, 32, 85, 63, 33, 82, 210]);
+            
+            try {
+                wt = new WebTransport("https://127.0.0.1:4433/", {
+                    serverCertificateHashes: [
+                        {
+                            algorithm: "sha-256",
+                            value: hashBytes
+                        }
+                    ]
+                });
+
+                log("wt-log", "Initiating WebTransport handshake...");
+                await wt.ready;
+                document.getElementById("wt-status").className = "status connected";
+                document.getElementById("wt-status").innerText = "Connected";
+                log("wt-log", "WebTransport connection established!");
+
+                // Establish bidirectional stream
+                const stream = await wt.createBidirectionalStream();
+                const writer = stream.writable.getWriter();
+                const reader = stream.readable.getReader();
+                wtWriter = writer;
+
+                // Read loop for WebTransport responses
+                tokioStyleReaderLoop(reader);
+            } catch (e) {
+                log("wt-log", "Connection failed: " + e.message);
+                console.error(e);
+            }
+        }
+
+        async function tokioStyleReaderLoop(reader) {
+            const decoder = new TextDecoder();
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    log("wt-log", "Received: " + decoder.decode(value));
+                }
+            } catch (e) {
+                log("wt-log", "Read error: " + e.message);
+            }
+        }
+
+        async function subscribeWT() {
+            if (wtWriter) {
+                const subMsg = JSON.stringify({
+                    action: "subscribe",
+                    channels: ["orderbook:BTCUSDT", "trades:BTCUSDT"]
+                });
+                const encoder = new TextEncoder();
+                await wtWriter.write(encoder.encode(subMsg));
+                log("wt-log", "Sent WT subscription command.");
+            } else {
+                log("wt-log", "Error: WebTransport stream is not open.");
+            }
+        }
+    </script>
+</body>
+</html>

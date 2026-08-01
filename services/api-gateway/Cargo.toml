@@ -22,7 +22,9 @@ prost.workspace=true
 proto = { path = "../../crates/proto" }
 async-trait.workspace=true
 sqlx.workspace = true
+rdkafka.workspace=true
 wtransport.workspace=true
+anyhow.workspace=true
 database = { path = "../../crates/database" }
 
 telemetry = { path = "../../crates/telemetry" }
