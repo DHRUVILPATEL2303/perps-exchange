@@ -26,6 +26,4 @@ proto = { path = "../../crates/proto" }
 database = { path = "../../crates/database" }
 thiserror.workspace = true
 rdkafka = { workspace = true }
-aeron-rs = { workspace = true }
-aeron-transport = { path = "../../crates/aeron-transport" }
 futures-util.workspace = true

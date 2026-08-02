@@ -9,7 +9,6 @@ members = [
     "crates/utils",
     "crates/database",
     "crates/proto",
-    "crates/aeron-transport",
 
     "services/api-gateway",
     "services/account-service",
@@ -69,7 +68,6 @@ prometheus = "0.13"
 
 #kafka
 rdkafka = { version = "0.36", features = ["tokio"] }
-aeron-rs = "0.1.8"
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 
 actix-ws = "0.3"

@@ -72,17 +72,6 @@ services:
         "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-depth --partitions 1 --replication-factor 1",
       ]
 
-  aeron-media-driver:
-    image: eclipse-temurin:17-jdk
-    container_name: aeron-media-driver
-    restart: unless-stopped
-    command: >
-      sh -c "apt-get update && apt-get install -y wget &&
-             ( [ -f aeron-all-1.44.0.jar ] || wget https://repo1.maven.org/maven2/io/aeron/aeron-all/1.44.0/aeron-all-1.44.0.jar ) &&
-             java --add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED -cp aeron-all-1.44.0.jar -Daeron.dir=/dev/shm/aeron io.aeron.driver.MediaDriver"
-    volumes:
-      - /dev/shm:/dev/shm
-
   market-service:
     build:
       context: .
@@ -127,8 +116,6 @@ services:
     command: ["trading-service"]
     ports:
       - "50052:50052"
-    volumes:
-      - /dev/shm:/dev/shm
     environment:
       - RUST_LOG=info
       - DATABASE__HOST=postgres
@@ -145,8 +132,6 @@ services:
         condition: service_started
       init-kafka:
         condition: service_completed_successfully
-      aeron-media-driver:
-        condition: service_started
 
   risk-engine-service:
     build:
@@ -156,8 +141,6 @@ services:
     command: ["risk-engine-service"]
     ports:
       - "50057:50057"
-    volumes:
-      - /dev/shm:/dev/shm
     environment:
       - RUST_LOG=info
       - DATABASE__HOST=postgres
@@ -173,8 +156,6 @@ services:
         condition: service_started
       init-kafka:
         condition: service_completed_successfully
-      aeron-media-driver:
-        condition: service_started
 
   matching-engine:
     build:
@@ -182,8 +163,6 @@ services:
       dockerfile: Dockerfile
     container_name: matching-engine
     command: ["matching-engine"]
-    volumes:
-      - /dev/shm:/dev/shm
     environment:
       - RUST_LOG=info
       - DATABASE__HOST=postgres
@@ -195,8 +174,6 @@ services:
         condition: service_started
       init-kafka:
         condition: service_completed_successfully
-      aeron-media-driver:
-        condition: service_started
 
   oracle-aggregator:
     build:
