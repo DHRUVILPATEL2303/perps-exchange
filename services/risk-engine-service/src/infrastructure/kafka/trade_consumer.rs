@@ -93,43 +93,143 @@ impl TradeConsumer {
         let maker_side = if event.taker_side == "BUY" { "SHORT" } else { "LONG" };
         let taker_side = if event.taker_side == "BUY" { "LONG" } else { "SHORT" };
 
-        let leverage = 20;
-        let mmr = Decimal::new(5, 3);
-
-        let taker_margin = (event.quantity * event.price) / Decimal::from(leverage);
-        let taker_liq = if taker_side == "LONG" {
-            event.price - (taker_margin / event.quantity) / (Decimal::ONE - mmr)
-        } else {
-            event.price + (taker_margin / event.quantity) / (Decimal::ONE + mmr)
-        };
-
-        self.repository.update_position(
+        self.update_mirrored_position(
             event.taker_user_id,
             &event.symbol,
             taker_side,
-            event.quantity,
             event.price,
-            taker_margin,
-            leverage,
-            taker_liq,
+            event.quantity,
         ).await?;
 
-        let maker_margin = (event.quantity * event.price) / Decimal::from(leverage);
-        let maker_liq = if maker_side == "LONG" {
-            event.price - (maker_margin / event.quantity) / (Decimal::ONE - mmr)
-        } else {
-            event.price + (maker_margin / event.quantity) / (Decimal::ONE + mmr)
-        };
-
-        self.repository.update_position(
+        self.update_mirrored_position(
             event.maker_user_id,
             &event.symbol,
             maker_side,
-            event.quantity,
             event.price,
-            maker_margin,
+            event.quantity,
+        ).await?;
+
+        Ok(())
+    }
+
+    async fn update_mirrored_position(
+        &self,
+        user_id: Uuid,
+        symbol: &str,
+        trade_side: &str,
+        trade_price: Decimal,
+        trade_qty: Decimal,
+    ) -> Result<()> {
+        let opposite_side = if trade_side == "LONG" { "SHORT" } else { "LONG" };
+        let leverage = 20;
+        let mmr = Decimal::new(5, 3);
+
+        let opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;
+
+        if let Some((opp_size, opp_entry, opp_margin, opp_lev)) = opposite_pos {
+            if opp_size > Decimal::ZERO {
+                if opp_size > trade_qty {
+                    let released_margin = (trade_qty / opp_size) * opp_margin;
+                    let new_size = opp_size - trade_qty;
+                    let new_margin = opp_margin - released_margin;
+                    let new_liq = if opposite_side == "LONG" {
+                        opp_entry - (new_margin / new_size) / (Decimal::ONE - mmr)
+                    } else {
+                        opp_entry + (new_margin / new_size) / (Decimal::ONE + mmr)
+                    };
+
+                    self.repository.update_position(
+                        user_id,
+                        symbol,
+                        opposite_side,
+                        new_size,
+                        opp_entry,
+                        new_margin,
+                        opp_lev,
+                        new_liq,
+                    ).await?;
+                    return Ok(());
+                } else {
+                    self.repository.update_position(
+                        user_id,
+                        symbol,
+                        opposite_side,
+                        Decimal::ZERO,
+                        Decimal::ZERO,
+                        Decimal::ZERO,
+                        opp_lev,
+                        Decimal::ZERO,
+                    ).await?;
+
+                    let remaining_qty = trade_qty - opp_size;
+                    if remaining_qty > Decimal::ZERO {
+                        let new_margin = (remaining_qty * trade_price) / Decimal::from(leverage);
+                        let new_liq = if trade_side == "LONG" {
+                            trade_price - (new_margin / remaining_qty) / (Decimal::ONE - mmr)
+                        } else {
+                            trade_price + (new_margin / remaining_qty) / (Decimal::ONE + mmr)
+                        };
+
+                        self.repository.update_position(
+                            user_id,
+                            symbol,
+                            trade_side,
+                            remaining_qty,
+                            trade_price,
+                            new_margin,
+                            leverage,
+                            new_liq,
+                        ).await?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
+        let existing_pos = self.repository.find_by_user_symbol_side(user_id, symbol, trade_side).await?;
+
+        if let Some((ext_size, ext_entry, ext_margin, ext_lev)) = existing_pos {
+            if ext_size > Decimal::ZERO {
+                let new_size = ext_size + trade_qty;
+                let new_entry = ((ext_size * ext_entry) + (trade_qty * trade_price)) / new_size;
+                let added_margin = (trade_qty * trade_price) / Decimal::from(ext_lev);
+                let new_margin = ext_margin + added_margin;
+                let new_liq = if trade_side == "LONG" {
+                    new_entry - (new_margin / new_size) / (Decimal::ONE - mmr)
+                } else {
+                    new_entry + (new_margin / new_size) / (Decimal::ONE + mmr)
+                };
+
+                self.repository.update_position(
+                    user_id,
+                    symbol,
+                    trade_side,
+                    new_size,
+                    new_entry,
+                    new_margin,
+                    ext_lev,
+                    new_liq,
+                ).await?;
+                return Ok(());
+            }
+        }
+
+        let new_margin = (trade_qty * trade_price) / Decimal::from(leverage);
+        let new_liq = if trade_side == "LONG" {
+            trade_price - (new_margin / trade_qty) / (Decimal::ONE - mmr)
+        } else {
+            trade_price + (new_margin / trade_qty) / (Decimal::ONE + mmr)
+        };
+
+        self.repository.update_position(
+            user_id,
+            symbol,
+            trade_side,
+            trade_qty,
+            trade_price,
+            new_margin,
             leverage,
-            maker_liq,
+            new_liq,
         ).await?;
 
         Ok(())

@@ -50,6 +50,37 @@ impl PositionRepository {
         Ok(())
     }
 
+    pub async fn find_by_user_symbol_side(
+        &self,
+        user_id: Uuid,
+        symbol: &str,
+        side: &str,
+    ) -> Result<Option<(Decimal, Decimal, Decimal, i32)>> {
+        let row = sqlx::query(
+            r#"
+            SELECT size, entry_price, margin, leverage
+            FROM positions
+            WHERE user_id = $1 AND symbol = $2 AND side = $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(symbol)
+        .bind(side)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(r) = row {
+            Ok(Some((
+                r.get("size"),
+                r.get("entry_price"),
+                r.get("margin"),
+                r.get("leverage"),
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn list_active_positions(&self) -> Result<Vec<(Uuid, String, String, Decimal)>> {
         let rows = sqlx::query(
             r#"

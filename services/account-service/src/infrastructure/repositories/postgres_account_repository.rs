@@ -224,7 +224,7 @@ impl AccountRepository for PostgresAccountRepository {
                 }
                 account.balance -= amount;
             }
-            "PNL" | "FUNDING" => {
+            "PNL" | "FUNDING" | "BANKRUPTCY_CLEAR" | "INSURANCE_PAYOUT" | "INSURANCE_RESCUE" | "CLEARANCE_FEE" => {
                 account.balance += amount;
             }
             _ => {
