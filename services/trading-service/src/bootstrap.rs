@@ -2,7 +2,6 @@ use crate::{
     application::services::position_service::PositionService,
     application::services::trading_service::TradingService,
     grpc::server::TradingGrpcService,
-    domain::repositories::order_repository::OrderRepository,
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient, risk_client::RiskGrpcClient},
@@ -113,6 +112,7 @@ pub async fn bootstrap() -> Result<(
         "trading-service-liq-group-v2",
         position_repository,
         account_client,
+        order_producer.clone()
     )?;
 
     let state = AppState {

@@ -101,8 +101,21 @@ impl PositionUseCase for PositionService {
                 if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
                     tracing::error!("Failed to release margin: {:?}", e);
                 }
-                if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
-                    tracing::error!("Failed to adjust realized PnL: {:?}", e);
+
+                let net_return = released_margin + pnl;
+                if net_return < Decimal::ZERO {
+                    let deficit = net_return.abs();
+                    let insurance_fund_id = "00000000-0000-0000-0000-000000000000";
+
+                    let _ = client.adjust_margin(user_id.to_string(), (-released_margin).to_string(), "BANKRUPTCY_CLEAR".to_string()).await;
+                    let _ = client.adjust_margin(insurance_fund_id.to_string(), (-deficit).to_string(), "INSURANCE_PAYOUT".to_string()).await;
+                    let _ = client.adjust_margin(user_id.to_string(), deficit.to_string(), "INSURANCE_RESCUE".to_string()).await;
+                    
+                    tracing::warn!(user_id = %user_id, deficit = %deficit, "User went bankrupt! Insurance Fund covered the deficit.");
+                } else {
+                    if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
+                        tracing::error!("Failed to adjust realized PnL: {:?}", e);
+                    }
                 }
 
                 return Ok(updated);
@@ -127,8 +140,21 @@ impl PositionUseCase for PositionService {
                 if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
                     tracing::error!("Failed to release margin: {:?}", e);
                 }
-                if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
-                    tracing::error!("Failed to adjust realized PnL: {:?}", e);
+
+                let net_return = released_margin + pnl;
+                if net_return < Decimal::ZERO {
+                    let deficit = net_return.abs();
+                    let insurance_fund_id = "00000000-0000-0000-0000-000000000000";
+
+                    let _ = client.adjust_margin(user_id.to_string(), (-released_margin).to_string(), "BANKRUPTCY_CLEAR".to_string()).await;
+                    let _ = client.adjust_margin(insurance_fund_id.to_string(), (-deficit).to_string(), "INSURANCE_PAYOUT".to_string()).await;
+                    let _ = client.adjust_margin(user_id.to_string(), deficit.to_string(), "INSURANCE_RESCUE".to_string()).await;
+                    
+                    tracing::warn!(user_id = %user_id, deficit = %deficit, "User went bankrupt! Insurance Fund covered the deficit.");
+                } else {
+                    if let Err(e) = client.adjust_margin(user_id.to_string(), pnl.to_string(), "PNL".to_string()).await {
+                        tracing::error!("Failed to adjust realized PnL: {:?}", e);
+                    }
                 }
 
                 if remaining_qty > Decimal::ZERO {
