@@ -25,7 +25,7 @@ pub struct LiquidationConsumer {
     consumer: StreamConsumer,
     position_repository: Arc<dyn PositionRepository>,
     account_client: Arc<Mutex<AccountGrpcClient>>,
-    order_producer: Arc<crate::infrastructure::kafka::producer::OrderProducer>,
+    order_publisher: Arc<aeron_transport::AeronPublisher>,
 }
 
 impl LiquidationConsumer {
@@ -34,7 +34,7 @@ impl LiquidationConsumer {
         group_id: &str,
         position_repository: Arc<dyn PositionRepository>,
         account_client: Arc<Mutex<AccountGrpcClient>>,
-        order_producer: Arc<crate::infrastructure::kafka::producer::OrderProducer>,
+        order_publisher: Arc<aeron_transport::AeronPublisher>,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
@@ -49,7 +49,7 @@ impl LiquidationConsumer {
             consumer,
             position_repository,
             account_client,
-            order_producer,
+            order_publisher,
         })
     }
 
@@ -109,7 +109,8 @@ impl LiquidationConsumer {
                     action: "CREATE".to_string(),
                 };
 
-                self.order_producer.publish_order(&kill_order).await?;
+                let payload = serde_json::to_vec(&kill_order)?;
+                self.order_publisher.publish(&payload).await?;
 
                 tracing::warn!(
                     user_id = %event.user_id,

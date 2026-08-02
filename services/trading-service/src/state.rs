@@ -8,7 +8,6 @@ use crate::{
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::risk_client::RiskGrpcClient,
-        kafka::producer::OrderProducer,
     },
 };
 
@@ -20,6 +19,6 @@ pub struct AppState {
     pub market_cache: Arc<MarketCache>,
     pub position_service: Arc<dyn PositionUseCase>,
     pub risk_client: Arc<RiskGrpcClient>,
-    pub order_producer: Arc<OrderProducer>,
+    pub order_publisher: Arc<aeron_transport::AeronPublisher>,
     pub order_repository: Arc<dyn OrderRepository>,
 }

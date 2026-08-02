@@ -83,7 +83,18 @@ pub async fn bootstrap() -> Result<(
     );
 
     let brokers = config.kafka.brokers.join(",");
-    let order_producer = Arc::new(OrderProducer::new(&brokers)?);
+
+    let aeron_dir = std::env::var("AERON_DIR").unwrap_or_else(|_| "/dev/shm/aeron".to_string());
+    println!("Connecting to Aeron Media Driver at {}...", aeron_dir);
+    let aeron_ctx = Arc::new(aeron_transport::AeronContext::new(&aeron_dir)?);
+
+    let aeron_channel = std::env::var("AERON_ORDER_CHANNEL").unwrap_or_else(|_| "aeron:ipc".to_string());
+    let aeron_stream_id = std::env::var("AERON_ORDER_STREAM_ID")
+        .unwrap_or_else(|_| "100".to_string())
+        .parse::<i32>()
+        .unwrap_or(100);
+    println!("Creating Aeron Publisher for {} (stream ID {})...", aeron_channel, aeron_stream_id);
+    let aeron_publisher = Arc::new(aeron_transport::AeronPublisher::new(&aeron_ctx.aeron, &aeron_channel, aeron_stream_id)?);
 
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
     let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
@@ -96,7 +107,7 @@ pub async fn bootstrap() -> Result<(
         position_service: position_service.clone(),
         account_client: account_client.clone(),
         risk_client: risk_client.clone(),
-        order_producer: order_producer.clone(),
+        order_publisher: aeron_publisher.clone(),
         order_repository: order_repository.clone(),
     };
 
@@ -112,7 +123,7 @@ pub async fn bootstrap() -> Result<(
         "trading-service-liq-group-v2",
         position_repository,
         account_client,
-        order_producer.clone()
+        aeron_publisher.clone()
     )?;
 
     let state = AppState {
@@ -122,7 +133,7 @@ pub async fn bootstrap() -> Result<(
         trading_service,
         position_service,
         risk_client,
-        order_producer,
+        order_publisher: aeron_publisher.clone(),
         order_repository,
     };
 
