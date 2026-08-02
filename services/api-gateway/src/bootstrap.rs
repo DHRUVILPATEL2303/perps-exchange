@@ -141,6 +141,7 @@ pub async fn run() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(actix_web::middleware::Logger::new("%a \"%r\" %s %b %Dms"))
             .app_data(app_state.clone())
             .configure(configure_routes)
     })

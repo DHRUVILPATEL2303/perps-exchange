@@ -57,6 +57,7 @@ pub async fn bootstrap(price_tracker: PriceTracker) -> Result<(
     };
 
     let grpc_server = Server::builder()
+        .layer(telemetry::grpc::GrpcLoggingLayer)
         .add_service(RiskServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 

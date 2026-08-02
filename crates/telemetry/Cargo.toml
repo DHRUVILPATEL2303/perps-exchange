@@ -11,3 +11,5 @@ opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
 tracing-opentelemetry.workspace = true
 prometheus.workspace = true
+http = "1"
+tower = "0.4"

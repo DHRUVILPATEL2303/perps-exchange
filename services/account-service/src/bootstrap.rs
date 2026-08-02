@@ -57,6 +57,7 @@ pub async fn run() -> Result<()> {
     };
 
     let grpc_server = Server::builder()
+        .layer(telemetry::grpc::GrpcLoggingLayer)
         .add_service(AccountServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 

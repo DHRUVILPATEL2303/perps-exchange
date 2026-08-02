@@ -70,6 +70,7 @@ pub async fn run() -> Result<()> {
 
     println!("gRPC Server started at {}", grpc_addr);
     Server::builder()
+        .layer(telemetry::grpc::GrpcLoggingLayer)
         .add_service(ChartServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal())
         .await
