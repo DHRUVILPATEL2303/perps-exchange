@@ -51,6 +51,21 @@ where
             let res = fut.await;
             let duration = start.elapsed();
 
+            let status_str = match &res {
+                Ok(response) => {
+                    let status = response.headers()
+                        .get("grpc-status")
+                        .and_then(|val| val.to_str().ok())
+                        .unwrap_or("0");
+                    status.to_string()
+                }
+                Err(_) => "unknown_error".to_string(),
+            };
+
+            // Increment Prometheus metrics
+            crate::metrics::GRPC_REQUESTS_TOTAL.with_label_values(&[&method, &status_str]).inc();
+            crate::metrics::GRPC_REQUEST_DURATION_SECONDS.with_label_values(&[&method]).observe(duration.as_secs_f64());
+
             match &res {
                 Ok(response) => {
                     let status = response.headers()

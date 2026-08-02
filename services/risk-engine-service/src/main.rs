@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
     let price_tracker = price_tracker::price_tracker::PriceTracker::new();
     let (state, grpc_server, risk_consumer, trade_consumer, liquidation_consumer) = 
         bootstrap::bootstrap(price_tracker.clone()).await?;
+    telemetry::http::spawn_metrics_server(state.config.server.port);
 
     println!("Risk Engine Service Ready.");
 

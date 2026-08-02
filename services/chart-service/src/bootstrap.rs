@@ -11,6 +11,7 @@ use crate::infrastructure::kafka::consumer::run_trade_consumer;
 
 pub async fn run() -> Result<()> {
     let config = AppConfig::load("chart-service").expect("Failed to load config");
+    telemetry::http::spawn_metrics_server(config.server.port);
 
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
         .parse()

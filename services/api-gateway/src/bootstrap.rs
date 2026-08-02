@@ -142,6 +142,8 @@ pub async fn run() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(actix_web::middleware::Logger::new("%a \"%r\" %s %b %Dms"))
+            .wrap(telemetry::http::HttpMetrics)
+            .service(telemetry::http::metrics_handler)
             .app_data(app_state.clone())
             .configure(configure_routes)
     })

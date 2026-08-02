@@ -13,3 +13,6 @@ tracing-opentelemetry.workspace = true
 prometheus.workspace = true
 http = "1"
 tower = "0.4"
+actix-web = "4"
+futures-util = "0.3"
+tokio = { workspace = true }

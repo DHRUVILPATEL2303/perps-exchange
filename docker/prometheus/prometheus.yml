@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: 'perps-services'
+    static_configs:
+      - targets:
+          - 'api-gateway:8080'
+          - 'market-service:8081'
+          - 'trading-service:8082'
+          - 'account-service:8083'
+          - 'matching-engine:8086'
+          - 'risk-engine-service:8087'
+          - 'chart-service:8088'
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']

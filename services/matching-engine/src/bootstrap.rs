@@ -9,6 +9,7 @@ use crate::infrastructure::kafka::producer::TradeProducer;
 
 pub async fn bootstrap() -> Result<()> {
     let config = AppConfig::load("matching-engine").expect("Failed to load config");
+    telemetry::http::spawn_metrics_server(config.server.port);
 
     let brokers = config.kafka.brokers.join(",");
 

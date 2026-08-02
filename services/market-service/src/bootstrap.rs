@@ -51,6 +51,8 @@ pub async fn run() -> Result<()> {
 
     let http_server = HttpServer::new(move || {
         actix_web::App::new()
+            .wrap(telemetry::http::HttpMetrics)
+            .service(telemetry::http::metrics_handler)
             .app_data(state.clone())
             .configure(presentation::rest::routes::configure)
     })
