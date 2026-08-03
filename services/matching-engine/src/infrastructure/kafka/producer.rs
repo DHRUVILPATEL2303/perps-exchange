@@ -65,4 +65,37 @@ impl TradeProducer {
 
         Ok(())
     }
+
+    pub fn publish_trade_sync(&self, trade: &Trade) -> Result<()> {
+        let payload = serde_json::to_string(trade)?;
+        let key = trade.symbol.clone();
+
+        match self.producer.send_result(
+            FutureRecord::to("execution-reports")
+                .payload(payload.as_bytes())
+                .key(key.as_bytes())
+        ) {
+            Ok(_) => Ok(()),
+            Err((e, _)) => Err(anyhow::anyhow!("Kafka sync send error: {}", e)),
+        }
+    }
+
+    pub fn publish_depth_sync(&self, symbol: &str, bids: Vec<(Decimal, Decimal)>, asks: Vec<(Decimal, Decimal)>) -> Result<()> {
+        let update = DepthUpdate {
+            symbol: symbol.to_string(),
+            bids,
+            asks,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+        };
+        let payload = serde_json::to_string(&update)?;
+
+        match self.producer.send_result(
+            FutureRecord::to("orderbook-depth")
+                .payload(payload.as_bytes())
+                .key(symbol.as_bytes())
+        ) {
+            Ok(_) => Ok(()),
+            Err((e, _)) => Err(anyhow::anyhow!("Kafka sync send error: {}", e)),
+        }
+    }
 }

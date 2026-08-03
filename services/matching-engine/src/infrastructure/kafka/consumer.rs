@@ -14,7 +14,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
-use telemetry::metrics::{MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL};
+use telemetry::metrics::{MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL, KAFKA_MESSAGES_CONSUMED_TOTAL};
 use tokio::sync::mpsc;
 use tracing::{Instrument, info_span};
 use uuid::Uuid;
@@ -69,6 +69,7 @@ impl OrderConsumer {
             match msg_result {
                 Err(e) => tracing::error!("Kafka error: {}", e),
                 Ok(msg) => {
+                    KAFKA_MESSAGES_CONSUMED_TOTAL.with_label_values(&["order-events"]).inc();
                     if let Some(payload) = msg.payload() {
                         match serde_json::from_slice::<IncomingOrder>(payload) {
                             Ok(incoming) => {
@@ -164,10 +165,9 @@ async fn symbol_worker(
                     executed_at: Utc::now(),
                 };
 
-                let p = producer.clone();
-                tokio::spawn(async move {
-                    let _ = p.publish_trade(&cancel_trade).await;
-                });
+                if let Err(e) = producer.publish_trade_sync(&cancel_trade) {
+                    tracing::error!("Failed to publish cancel trade: {}", e);
+                }
             }
             ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_cancel"]).inc();
         } else {
@@ -199,10 +199,9 @@ async fn symbol_worker(
 
             let trades = book.match_order(taker);
             for trade in trades {
-                let p = producer.clone();
-                tokio::spawn(async move {
-                    let _ = p.publish_trade(&trade).await;
-                });
+                if let Err(e) = producer.publish_trade_sync(&trade) {
+                    tracing::error!("Failed to publish trade: {}", e);
+                }
             }
             ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_match"]).inc();
         }
@@ -212,11 +211,9 @@ async fn symbol_worker(
             }
             _ = depth_interval.tick() => {
                 let (bids, asks) = book.get_l2_depth(10);
-                let p = producer.clone();
-                let sym = symbol.clone();
-                tokio::spawn(async move {
-                    let _ = p.publish_depth(&sym, bids, asks).await;
-                });
+                if let Err(e) = producer.publish_depth_sync(&symbol, bids, asks) {
+                    tracing::error!("Failed to publish depth: {}", e);
+                }
             }
         }
     }

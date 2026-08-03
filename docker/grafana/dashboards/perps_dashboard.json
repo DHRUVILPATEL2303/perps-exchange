@@ -271,6 +271,19 @@
         "legendFormat": "p99 (ms)",
         "refId": "A"
       }]
+    },
+    {
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "id": 8,
+      "title": "Raw Kafka Messages Consumed / Sec",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "expr": "sum(rate(kafka_messages_consumed_total[15s]))",
+        "legendFormat": "Messages / sec",
+        "refId": "A"
+      }]
     }
   ],
   "schemaVersion": 38,

@@ -31,6 +31,8 @@ pub async fn bootstrap() -> Result<(
 )> {
     let config = AppConfig::load("trading-service").expect("Failed to load config");
 
+    telemetry::http::spawn_metrics_server(config.server.port);
+
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
         .parse()
         .expect("Invalid gRPC address");

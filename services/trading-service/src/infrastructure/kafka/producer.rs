@@ -2,6 +2,7 @@ use anyhow::Result;
 use rdkafka::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::time::Duration;
+use telemetry::metrics::KAFKA_MESSAGES_PRODUCED_TOTAL;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -43,6 +44,8 @@ impl OrderProducer {
             )
             .await
             .map_err(|(e, _)| anyhow::anyhow!("Kafka send error: {}", e))?;
+        
+        KAFKA_MESSAGES_PRODUCED_TOTAL.with_label_values(&["order-events"]).inc();
 
         Ok(())
     }

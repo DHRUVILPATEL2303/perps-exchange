@@ -45,6 +45,20 @@ pub static MATCHING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| 
     histogram
 });
 
+pub static KAFKA_MESSAGES_CONSUMED_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    let opts = Opts::new("kafka_messages_consumed_total", "Total number of messages pulled from Kafka");
+    let counter = CounterVec::new(opts, &["topic"]).unwrap();
+    REGISTRY.register(Box::new(counter.clone())).unwrap();
+    counter
+});
+
+pub static KAFKA_MESSAGES_PRODUCED_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    let opts = Opts::new("kafka_messages_produced_total", "Total number of messages published to Kafka");
+    let counter = CounterVec::new(opts, &["topic"]).unwrap();
+    REGISTRY.register(Box::new(counter.clone())).unwrap();
+    counter
+});
+
 pub fn gather_metrics() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
