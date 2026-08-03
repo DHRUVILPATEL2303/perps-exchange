@@ -169,6 +169,8 @@ services:
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
+      - OTLP_ENDPOINT=http://jaeger:4317
+      - SERVICE_NAME=matching-engine
     depends_on:
       kafka:
         condition: service_started
@@ -301,6 +303,18 @@ services:
       - /dev/disk/:/dev/disk:ro
     ports:
       - "8089:8080"
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - QUERY_UI_CONFIG=/etc/jaeger/jaeger-ui.json
+    volumes:
+      - ./docker/jaeger/jaeger-ui.json:/etc/jaeger/jaeger-ui.json
 
 volumes:
   postgres_data:

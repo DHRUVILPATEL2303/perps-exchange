@@ -13,8 +13,11 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use telemetry::metrics::{ORDERS_PROCESSED_TOTAL, MATCHING_DURATION_SECONDS};
+use tracing::{info_span, Instrument};
 
 #[derive(Deserialize, Debug)]
 pub struct IncomingOrder {
@@ -95,7 +98,6 @@ impl OrderConsumer {
                             }
                             Err(e) => tracing::error!("Failed to deserialize incoming order: {}", e),
                         }
-                        let _ = consumer.commit_message(&msg, CommitMode::Async);
                     }
                 }
             }
@@ -110,9 +112,22 @@ async fn symbol_worker(
 ) {
     tracing::info!("Started dedicated matching worker for {}", symbol);
     let mut book = OrderBook::new(symbol.clone());
+    let mut depth_interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
-    while let Some(incoming) = rx.recv().await {
-        let order_id = match Uuid::parse_str(&incoming.id) {
+    loop {
+        tokio::select! {
+            incoming_opt = rx.recv() => {
+                let incoming = match incoming_opt {
+                    Some(msg) => msg,
+                    None => break, // Channel closed, exit worker
+                };
+
+                let start_time = Instant::now();
+                
+                let span = info_span!("match_order", symbol = %symbol, order_id = %incoming.id);
+                let _enter = span.enter();
+
+                let order_id = match Uuid::parse_str(&incoming.id) {
             Ok(uid) => uid,
             Err(e) => {
                 tracing::error!("Invalid order UUID: {}", e);
@@ -152,14 +167,8 @@ async fn symbol_worker(
                 tokio::spawn(async move {
                     let _ = p.publish_trade(&cancel_trade).await;
                 });
-
-                let (bids, asks) = book.get_l2_depth(10);
-                let p = producer.clone();
-                let sym = symbol.clone();
-                tokio::spawn(async move {
-                    let _ = p.publish_depth(&sym, bids, asks).await;
-                });
             }
+            ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_cancel"]).inc();
         } else {
             let limit_price = if incoming.order_type == "LIMIT" {
                 Some(Decimal::from_str(&incoming.price).unwrap_or(Decimal::ZERO))
@@ -169,7 +178,7 @@ async fn symbol_worker(
 
             let taker = BookOrder {
                 id: order_id,
-                user_id,
+                user_id: user_id,
                 symbol: symbol.clone(),
                 side: match side {
                     OrderSide::Buy => OrderSide::Buy,
@@ -194,13 +203,21 @@ async fn symbol_worker(
                     let _ = p.publish_trade(&trade).await;
                 });
             }
-
-            let (bids, asks) = book.get_l2_depth(10);
-            let p = producer.clone();
-            let sym = symbol.clone();
-            tokio::spawn(async move {
-                let _ = p.publish_depth(&sym, bids, asks).await;
-            });
+            ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_match"]).inc();
+        }
+        
+        let duration = start_time.elapsed().as_secs_f64();
+        MATCHING_DURATION_SECONDS.with_label_values(&[&symbol]).observe(duration);
+            }
+            _ = depth_interval.tick() => {
+                // Throttle depth publishing to every 100ms
+                let (bids, asks) = book.get_l2_depth(10);
+                let p = producer.clone();
+                let sym = symbol.clone();
+                tokio::spawn(async move {
+                    let _ = p.publish_depth(&sym, bids, asks).await;
+                });
+            }
         }
     }
 }

@@ -245,6 +245,32 @@
           "unit": "bytes"
         }
       }
+    },
+    {
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "title": "Matching Engine Orders Processed / Sec",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "expr": "sum(rate(orders_processed_total[15s]))",
+        "legendFormat": "TPS",
+        "refId": "A"
+      }]
+    },
+    {
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "title": "Matching Engine Order Latency (ms)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "expr": "histogram_quantile(0.99, sum(rate(matching_duration_seconds_bucket[1m])) by (le)) * 1000",
+        "legendFormat": "p99 (ms)",
+        "refId": "A"
+      }]
     }
   ],
   "schemaVersion": 38,

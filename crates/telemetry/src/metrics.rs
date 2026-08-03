@@ -31,6 +31,20 @@ pub static GRPC_REQUEST_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new
     histogram
 });
 
+pub static ORDERS_PROCESSED_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    let opts = Opts::new("orders_processed_total", "Total number of orders processed by the matching engine");
+    let counter = CounterVec::new(opts, &["symbol", "status"]).unwrap();
+    REGISTRY.register(Box::new(counter.clone())).unwrap();
+    counter
+});
+
+pub static MATCHING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("matching_duration_seconds", "Time taken to match an order in seconds");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
 pub fn gather_metrics() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
