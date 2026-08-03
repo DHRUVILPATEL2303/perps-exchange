@@ -284,6 +284,19 @@
         "legendFormat": "Messages / sec",
         "refId": "A"
       }]
+    },
+    {
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "id": 9,
+      "title": "Raw Kafka Messages Produced / Sec (Trading Service)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [{
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "expr": "sum(rate(kafka_messages_produced_total[15s]))",
+        "legendFormat": "Messages / sec",
+        "refId": "A"
+      }]
     }
   ],
   "schemaVersion": 38,

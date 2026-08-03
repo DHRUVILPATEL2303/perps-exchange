@@ -19,6 +19,7 @@ sqlx = { workspace = true }
 async-trait.workspace = true
 tonic = { workspace = true }
 prost = { workspace = true }
+redis = { workspace = true }
 
 proto = { path = "../../crates/proto" }
 

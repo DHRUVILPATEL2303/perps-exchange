@@ -24,3 +24,7 @@ dashmap = "6"
 proto = { path = "../../crates/proto" }
 config = { path = "../../crates/config" }
 telemetry = { path = "../../crates/telemetry" }
+
+[[bin]]
+name = "kafka-load-tester"
+path = "src/bin/kafka_load_tester.rs"

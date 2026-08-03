@@ -15,6 +15,7 @@ dependencies = [
  "errors",
  "prost 0.14.4",
  "proto",
+ "redis",
  "rust_decimal",
  "serde",
  "serde_json",

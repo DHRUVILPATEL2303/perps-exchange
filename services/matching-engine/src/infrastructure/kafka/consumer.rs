@@ -33,7 +33,7 @@ pub struct IncomingOrder {
 
 pub struct OrderConsumer {
     consumer: StreamConsumer,
-    router: Arc<DashMap<String, mpsc::UnboundedSender<IncomingOrder>>>,
+    router: Arc<DashMap<String, mpsc::Sender<IncomingOrder>>>,
     producer: Arc<TradeProducer>,
 }
 
@@ -79,7 +79,7 @@ impl OrderConsumer {
                                     if let Some(tx) = router.get(&symbol) {
                                         tx.clone()
                                     } else {
-                                        let (tx, rx) = mpsc::unbounded_channel();
+                                        let (tx, rx) = mpsc::channel(100_000); // Bounded channel to prevent OOM
                                         router.insert(symbol.clone(), tx.clone());
 
                                         let p = producer.clone();
@@ -89,7 +89,7 @@ impl OrderConsumer {
                                     }
                                 };
 
-                                if let Err(e) = tx.send(incoming) {
+                                if let Err(e) = tx.send(incoming).await {
                                     tracing::error!(
                                         "Failed to route order to symbol worker: {}",
                                         e
@@ -109,7 +109,7 @@ impl OrderConsumer {
 
 async fn symbol_worker(
     symbol: String,
-    mut rx: mpsc::UnboundedReceiver<IncomingOrder>,
+    mut rx: mpsc::Receiver<IncomingOrder>,
     producer: Arc<TradeProducer>,
 ) {
     tracing::info!("Started dedicated matching worker for {}", symbol);
