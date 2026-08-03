@@ -207,8 +207,22 @@ impl AccountRepository for PostgresAccountRepository {
         let mut account = match account {
             Some(a) => a,
             None => {
-                tx.rollback().await?;
-                return Err(RepositoryError::NotFound);
+                if adjustment_type != "DEPOSIT" {
+                    tx.rollback().await?;
+                    return Err(RepositoryError::NotFound);
+                }
+                let new_account = sqlx::query_as::<_, Account>(
+                    r#"
+                    INSERT INTO accounts (id, user_id, asset, balance, frozen, created_at, updated_at)
+                    VALUES (gen_random_uuid(), $1, $2, 0, 0, NOW(), NOW())
+                    RETURNING id, user_id, asset, balance, frozen, created_at, updated_at
+                    "#,
+                )
+                .bind(user_id)
+                .bind(asset)
+                .fetch_one(&mut *tx)
+                .await?;
+                new_account
             }
         };
 

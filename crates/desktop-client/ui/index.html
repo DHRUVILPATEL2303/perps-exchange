@@ -4,43 +4,72 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Perps Exchange Desktop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
+
+    <!-- ── LOGIN ─────────────────────────────────────────────────────── -->
     <div id="login-screen" class="screen">
-      <div class="card login-card">
-        <h2>PERPS EXCHANGE</h2>
-        <p class="subtitle">Please enter your credentials to access the trading hub</p>
-        <form id="login-form">
-          <div class="form-group">
-            <label for="username">Username</label>
-            <input type="text" id="username" autocomplete="off" required>
-          </div>
-          <div class="form-group">
-            <label for="password">Password</label>
-            <input type="password" id="password" required>
-          </div>
-          <button type="submit" class="btn btn-primary">Log In</button>
-        </form>
-        <p id="login-log" class="log-message"></p>
+      <div class="login-wrapper">
+        <div class="login-brand">
+          <div class="login-logo">⚡</div>
+          <h1 class="login-title">PERPS EXCHANGE</h1>
+          <p class="login-sub">Institutional-grade perpetual futures</p>
+        </div>
+        <div class="login-card">
+          <h3>Sign In</h3>
+          <form id="login-form">
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" id="username" placeholder="Enter username" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" id="password" placeholder="Enter password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Access Trading Terminal</button>
+          </form>
+          <p id="login-log" class="log-message"></p>
+          <p class="login-hint">New users receive <strong>$10,000 USDT</strong> on first login</p>
+        </div>
       </div>
     </div>
 
-    <div id="dashboard-screen" class="screen" style="display: none;">
-      <header class="header">
-        <div class="logo">PERPS EXCHANGE</div>
-        <div class="user-profile">
-          <span id="user-id-display" class="badge"></span>
-          <span id="balance-display" class="balance"></span>
+    <!-- ── DASHBOARD ──────────────────────────────────────────────────── -->
+    <div id="dashboard-screen" class="screen" style="display:none;">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="logo">⚡ PERPS</span>
+          <span class="topbar-tag">Markets</span>
+        </div>
+        <div class="topbar-right">
+          <div class="account-pill">
+            <span class="account-label">Balance</span>
+            <span id="balance-display" class="balance-amount">—</span>
+          </div>
+          <div class="account-pill">
+            <span class="account-label">Account</span>
+            <span id="user-id-display" class="user-tag">—</span>
+          </div>
+          <button id="btn-logout" class="btn btn-ghost">Log Out</button>
         </div>
       </header>
-      <main class="dashboard-main">
-        <div class="card market-directory-card">
-          <h3>Market Directory</h3>
-          <p class="section-desc">Select a perpetual market to enter the trading desk</p>
-          <div class="table-container">
-            <table class="table">
+
+      <main class="dashboard-body">
+        <div class="markets-card">
+          <div class="markets-card-header">
+            <div>
+              <h3>Market Directory</h3>
+              <p class="section-desc">Select a perpetual market to enter the trading desk</p>
+            </div>
+            <button id="btn-enter-market" class="btn btn-primary" disabled>Enter Market →</button>
+          </div>
+          <div class="markets-table-wrap">
+            <table class="markets-table">
               <thead>
                 <tr>
                   <th>Symbol</th>
@@ -49,108 +78,149 @@
                   <th>Tick Size</th>
                   <th>Lot Size</th>
                   <th>Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody id="markets-tbody"></tbody>
             </table>
           </div>
-          <div class="dashboard-actions">
-            <button id="btn-enter-market" class="btn btn-primary btn-disabled" disabled>Enter Selected Market</button>
-            <button id="btn-logout" class="btn btn-secondary">Log Out</button>
-          </div>
         </div>
       </main>
     </div>
 
-    <div id="trading-screen" class="screen" style="display: none;">
-      <header class="header">
-        <div class="header-left">
-          <button id="btn-back-to-dashboard" class="btn btn-icon">← Back</button>
-          <span id="trading-symbol" class="trading-title"></span>
-          <span id="trading-price" class="trading-price"></span>
+    <!-- ── TRADING DESK ───────────────────────────────────────────────── -->
+    <div id="trading-screen" class="screen" style="display:none;">
+
+      <!-- Top bar -->
+      <header class="topbar trading-topbar">
+        <div class="topbar-left">
+          <button id="btn-back-to-dashboard" class="btn btn-ghost btn-sm">← Markets</button>
+          <div class="symbol-block">
+            <span id="trading-symbol" class="symbol-name"></span>
+            <span id="trading-price" class="symbol-price">—</span>
+            <span id="price-change" class="price-change">—</span>
+          </div>
+          <div class="stat-chip"><span class="stat-label">24h High</span><span id="stat-high" class="stat-val green">—</span></div>
+          <div class="stat-chip"><span class="stat-label">24h Low</span><span id="stat-low" class="stat-val red">—</span></div>
+          <div class="stat-chip"><span class="stat-label">24h Vol</span><span id="stat-vol" class="stat-val">—</span></div>
         </div>
-        <div class="header-right">
-          <span id="trading-balance" class="balance"></span>
+        <div class="topbar-right">
+          <div class="account-pill">
+            <span class="account-label">USDT Balance</span>
+            <span id="trading-balance" class="balance-amount">—</span>
+          </div>
         </div>
       </header>
+
+      <!-- Main trading layout -->
       <div class="trading-layout">
-        <aside class="sidebar card">
-          <h4>Place Order</h4>
-          <form id="order-form">
-            <div class="toggle-group">
-              <label class="toggle-btn active">
-                <input type="radio" name="side" value="BUY" checked> BUY
-              </label>
-              <label class="toggle-btn">
-                <input type="radio" name="side" value="SELL"> SELL
-              </label>
-            </div>
-            <div class="toggle-group">
-              <label class="toggle-btn active">
-                <input type="radio" name="order_type" value="LIMIT" checked> LIMIT
-              </label>
-              <label class="toggle-btn">
-                <input type="radio" name="order_type" value="MARKET"> MARKET
-              </label>
-            </div>
-            <div class="form-group">
-              <label for="order-qty">Quantity (BTC)</label>
-              <input type="number" id="order-qty" step="0.001" min="0.001" value="0.1" required>
-            </div>
-            <div id="price-field" class="form-group">
-              <label for="order-price">Price (USDT)</label>
-              <input type="number" id="order-price" step="0.5" min="0.5" value="64250">
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">Submit Order</button>
-          </form>
-          <p id="order-log" class="log-message"></p>
-        </aside>
-        
-        <main class="trading-main">
-          <div class="panel-row">
-            <section class="panel card orderbook-panel">
-              <h4>Orderbook</h4>
-              <div class="orderbook-container">
-                <div class="orderbook-side asks-side">
-                  <h5>Asks (Sells)</h5>
-                  <div class="orderbook-header">
-                    <span>Price</span>
-                    <span>Qty</span>
-                  </div>
-                  <div id="asks-list" class="orderbook-list"></div>
-                </div>
-                <div class="orderbook-side bids-side">
-                  <h5>Bids (Buys)</h5>
-                  <div class="orderbook-header">
-                    <span>Price</span>
-                    <span>Qty</span>
-                  </div>
-                  <div id="bids-list" class="orderbook-list"></div>
-                </div>
-              </div>
-            </section>
-            
-            <section class="panel card chart-panel">
-              <h4>Price Chart</h4>
-              <div class="chart-container">
-                <canvas id="price-canvas"></canvas>
-              </div>
-            </section>
+
+        <!-- LEFT: Order Form -->
+        <aside class="order-panel">
+          <div class="side-tabs">
+            <button class="side-tab buy-tab active" id="tab-buy" data-side="BUY">Buy / Long</button>
+            <button class="side-tab sell-tab" id="tab-sell" data-side="SELL">Sell / Short</button>
+          </div>
+          <div class="type-tabs">
+            <button class="type-tab active" data-type="LIMIT">Limit</button>
+            <button class="type-tab" data-type="MARKET">Market</button>
           </div>
 
-          <section class="panel card trades-panel">
-            <h4>Recent Trades</h4>
-            <div class="trades-header">
+          <form id="order-form" class="order-form">
+            <input type="hidden" id="order-side" value="BUY">
+            <input type="hidden" id="order-type-val" value="LIMIT">
+
+            <div class="form-group">
+              <label>Price (USDT)</label>
+              <div class="input-wrap">
+                <input type="number" id="order-price" step="0.5" min="0" value="64250">
+                <span class="input-tag">USDT</span>
+              </div>
+            </div>
+            <div class="form-group" id="price-field-wrap">
+              <label>Quantity (BTC)</label>
+              <div class="input-wrap">
+                <input type="number" id="order-qty" step="0.001" min="0.001" value="0.1">
+                <span class="input-tag">BTC</span>
+              </div>
+            </div>
+
+            <div class="order-summary">
+              <div class="summary-row"><span>Order Total</span><span id="order-total">—</span></div>
+              <div class="summary-row"><span>Available</span><span id="order-avail" class="green">—</span></div>
+            </div>
+
+            <button type="submit" id="submit-order-btn" class="btn btn-buy btn-block">Place Buy Order</button>
+          </form>
+
+          <div id="order-log" class="order-log"></div>
+
+          <!-- Open Orders -->
+          <div class="positions-section">
+            <h5>Open Orders</h5>
+            <div id="open-orders-list" class="open-orders-list">
+              <span class="empty-label">No open orders</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- CENTER: Chart -->
+        <div class="chart-col">
+          <div class="chart-header">
+            <div class="chart-header-left">
+              <span class="chart-title" id="chart-symbol-label">Price Chart</span>
+              <div class="interval-btns">
+                <button class="interval-btn active" data-interval="1m">1m</button>
+                <button class="interval-btn" data-interval="5m">5m</button>
+                <button class="interval-btn" data-interval="15m">15m</button>
+                <button class="interval-btn" data-interval="1h">1H</button>
+                <button class="interval-btn" data-interval="4h">4H</button>
+                <button class="interval-btn" data-interval="1d">1D</button>
+              </div>
+              <div id="ohlc-legend" class="ohlc-legend"></div>
+            </div>
+          </div>
+          <div id="tv-chart" class="tv-chart-container"></div>
+
+          <!-- Recent Trades -->
+          <div class="trades-section">
+            <div class="trades-header-row">
               <span>Time</span>
               <span>Side</span>
-              <span>Price</span>
+              <span>Price (USDT)</span>
               <span>Qty</span>
             </div>
-            <div id="trades-list" class="trades-list-container"></div>
-          </section>
-        </main>
+            <div id="trades-list" class="trades-list"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Orderbook -->
+        <aside class="ob-panel">
+          <div class="ob-header">
+            <span class="ob-title">Order Book</span>
+            <div class="ob-col-labels">
+              <span>Price</span>
+              <span>Size</span>
+              <span>Total</span>
+            </div>
+          </div>
+
+          <!-- Asks (sells) — top, reversed so lowest ask is closest to price -->
+          <div id="asks-list" class="ob-side ob-asks"></div>
+
+          <!-- Spread row -->
+          <div class="ob-spread-row">
+            <span id="ob-mid-price" class="ob-mid-price">—</span>
+            <span id="ob-spread" class="ob-spread-label">Spread: —</span>
+          </div>
+
+          <!-- Bids (buys) — bottom -->
+          <div id="bids-list" class="ob-side ob-bids"></div>
+        </aside>
+
       </div>
     </div>
+
   </div>
   <script src="app.js"></script>
 </body>

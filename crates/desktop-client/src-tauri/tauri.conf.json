@@ -12,14 +12,16 @@
       {
         "label": "main",
         "title": "Perps Exchange Desktop",
-        "width": 1100,
-        "height": 700,
+        "width": 1400,
+        "height": 860,
+        "minWidth": 1200,
+        "minHeight": 700,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://unpkg.com; connect-src http://localhost:8080 ws://localhost:8080; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com"
     }
   },
   "bundle": {
