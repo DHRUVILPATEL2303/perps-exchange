@@ -1,0 +1,29 @@
+{
+  "productName": "Perps Exchange",
+  "version": "0.1.0",
+  "identifier": "com.perps.exchange",
+  "build": {
+    "frontendDist": "../ui",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Perps Exchange Desktop",
+        "width": 1100,
+        "height": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

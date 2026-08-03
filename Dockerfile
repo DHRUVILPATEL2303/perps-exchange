@@ -15,7 +15,16 @@ RUN apt-get update && apt-get install -y \
 
 COPY . .
 
-RUN cargo build --release
+RUN cargo build --release \
+    -p market-service \
+    -p account-service \
+    -p trading-service \
+    -p risk-engine-service \
+    -p matching-engine \
+    -p oracle-aggregator \
+    -p binance-liquidation \
+    -p api-gateway \
+    -p chart-service
 
 FROM debian:bookworm-slim
 

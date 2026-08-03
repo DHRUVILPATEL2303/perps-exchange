@@ -140,7 +140,14 @@ pub async fn run() -> std::io::Result<()> {
     println!("API Gateway started at {}:{}", config.server.host, config.server.port);
 
     HttpServer::new(move || {
+        let cors = actix_cors::Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
         App::new()
+            .wrap(cors)
             .wrap(actix_web::middleware::Logger::new("%a \"%r\" %s %b %Dms"))
             .wrap(telemetry::http::HttpMetrics)
             .service(telemetry::http::metrics_handler)

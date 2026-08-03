@@ -4,7 +4,7 @@ use tonic::{Request, Response, Status};
 
 use proto::market::{
     GetMarketRequest, GetMarketResponse, ListMarketsRequest, ListMarketsResponse,
-    market_service_server::MarketService,
+    CreateMarketRequest, market_service_server::MarketService,
 };
 
 use crate::application::usecase::market_usecase::MarketUseCase;
@@ -49,5 +49,38 @@ impl MarketService for MarketGrpcService {
         };
 
         Ok(Response::new(response))
+    }
+
+    async fn create_market(
+        &self,
+        request: Request<CreateMarketRequest>,
+    ) -> Result<Response<GetMarketResponse>, Status> {
+        let req = request.into_inner();
+
+        let tick_size = req.tick_size.parse::<rust_decimal::Decimal>().map_err(|e| {
+            Status::invalid_argument(format!("Invalid tick_size: {}", e))
+        })?;
+        let lot_size = req.lot_size.parse::<rust_decimal::Decimal>().map_err(|e| {
+            Status::invalid_argument(format!("Invalid lot_size: {}", e))
+        })?;
+        let min_qty = req.min_qty.parse::<rust_decimal::Decimal>().map_err(|e| {
+            Status::invalid_argument(format!("Invalid min_qty: {}", e))
+        })?;
+
+        let create_dto = crate::application::dto::requests::create_market_request::CreateMarketRequest {
+            symbol: req.symbol,
+            base_asset: req.base_asset,
+            quote_asset: req.quote_asset,
+            tick_size,
+            lot_size,
+            min_qty,
+            max_leverage: req.max_leverage as u16,
+        };
+
+        let response = self.service.create_market(create_dto).await.map_err(|e| {
+            Status::internal(e.to_string())
+        })?;
+
+        Ok(Response::new(response.into()))
     }
 }

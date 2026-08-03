@@ -2,8 +2,20 @@ use crate::state::AppState;
 use actix_web::HttpResponse;
 use actix_web::web::{Data, Path, Query};
 use proto::chart::GetCandlesRequest as GrpcGetCandlesRequest;
-use proto::market::ListMarketsRequest;
+use proto::market::{ListMarketsRequest, CreateMarketRequest};
 use redis::AsyncCommands;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct HTTPCreateMarketRequest {
+    pub symbol: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub tick_size: String,
+    pub lot_size: String,
+    pub min_qty: String,
+    pub max_leverage: u32,
+}
 
 #[derive(serde::Deserialize)]
 pub struct CandlesQuery {
@@ -25,6 +37,27 @@ pub async fn list_markets(state: Data<AppState>) -> HttpResponse {
     let mut client = state.market_client.clone();
     match client.list_markets(ListMarketsRequest {}).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner().markets),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+pub async fn create_market(
+    state: Data<AppState>,
+    body: actix_web::web::Json<HTTPCreateMarketRequest>,
+) -> HttpResponse {
+    let req = body.into_inner();
+    let mut client = state.market_client.clone();
+    let grpc_req = CreateMarketRequest {
+        symbol: req.symbol,
+        base_asset: req.base_asset,
+        quote_asset: req.quote_asset,
+        tick_size: req.tick_size,
+        lot_size: req.lot_size,
+        min_qty: req.min_qty,
+        max_leverage: req.max_leverage,
+    };
+    match client.create_market(grpc_req).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner()),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

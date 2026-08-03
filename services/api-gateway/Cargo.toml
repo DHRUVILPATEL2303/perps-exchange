@@ -5,6 +5,7 @@ edition.workspace=true
 
 [dependencies]
 actix-web.workspace=true
+actix-cors.workspace=true
 actix-ws.workspace=true
 tokio-stream.workspace=true
 redis = { workspace = true, features = ["tokio-comp"] }
