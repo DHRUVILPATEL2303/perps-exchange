@@ -14,10 +14,10 @@ use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
+use telemetry::metrics::{MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL};
 use tokio::sync::mpsc;
+use tracing::{Instrument, info_span};
 use uuid::Uuid;
-use telemetry::metrics::{ORDERS_PROCESSED_TOTAL, MATCHING_DURATION_SECONDS};
-use tracing::{info_span, Instrument};
 
 #[derive(Deserialize, Debug)]
 pub struct IncomingOrder {
@@ -38,11 +38,7 @@ pub struct OrderConsumer {
 }
 
 impl OrderConsumer {
-    pub fn new(
-        brokers: &str,
-        group_id: &str,
-        producer: Arc<TradeProducer>,
-    ) -> Result<Self> {
+    pub fn new(brokers: &str, group_id: &str, producer: Arc<TradeProducer>) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .set("group.id", group_id)
@@ -77,26 +73,31 @@ impl OrderConsumer {
                         match serde_json::from_slice::<IncomingOrder>(payload) {
                             Ok(incoming) => {
                                 let symbol = incoming.symbol.clone();
-                                
+
                                 let tx = {
                                     if let Some(tx) = router.get(&symbol) {
                                         tx.clone()
                                     } else {
                                         let (tx, rx) = mpsc::unbounded_channel();
                                         router.insert(symbol.clone(), tx.clone());
-                                        
+
                                         let p = producer.clone();
                                         tokio::spawn(symbol_worker(symbol.clone(), rx, p));
-                                        
+
                                         tx
                                     }
                                 };
 
                                 if let Err(e) = tx.send(incoming) {
-                                    tracing::error!("Failed to route order to symbol worker: {}", e);
+                                    tracing::error!(
+                                        "Failed to route order to symbol worker: {}",
+                                        e
+                                    );
                                 }
                             }
-                            Err(e) => tracing::error!("Failed to deserialize incoming order: {}", e),
+                            Err(e) => {
+                                tracing::error!("Failed to deserialize incoming order: {}", e)
+                            }
                         }
                     }
                 }
@@ -123,7 +124,7 @@ async fn symbol_worker(
                 };
 
                 let start_time = Instant::now();
-                
+
                 let span = info_span!("match_order", symbol = %symbol, order_id = %incoming.id);
                 let _enter = span.enter();
 
@@ -162,7 +163,7 @@ async fn symbol_worker(
                     taker_side: "CANCEL".to_string(),
                     executed_at: Utc::now(),
                 };
-                
+
                 let p = producer.clone();
                 tokio::spawn(async move {
                     let _ = p.publish_trade(&cancel_trade).await;
@@ -205,12 +206,11 @@ async fn symbol_worker(
             }
             ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_match"]).inc();
         }
-        
+
         let duration = start_time.elapsed().as_secs_f64();
         MATCHING_DURATION_SECONDS.with_label_values(&[&symbol]).observe(duration);
             }
             _ = depth_interval.tick() => {
-                // Throttle depth publishing to every 100ms
                 let (bids, asks) = book.get_l2_depth(10);
                 let p = producer.clone();
                 let sym = symbol.clone();
