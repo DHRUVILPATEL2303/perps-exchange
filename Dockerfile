@@ -24,7 +24,8 @@ RUN cargo build --release \
     -p oracle-aggregator \
     -p binance-liquidation \
     -p api-gateway \
-    -p chart-service
+    -p chart-service \
+    -p telegram-bot
 
 FROM debian:bookworm-slim
 
@@ -44,6 +45,7 @@ COPY --from=builder /usr/src/perps-exchange/target/release/oracle-aggregator /us
 COPY --from=builder /usr/src/perps-exchange/target/release/binance-liquidation /usr/local/bin/
 COPY --from=builder /usr/src/perps-exchange/target/release/api-gateway /usr/local/bin/
 COPY --from=builder /usr/src/perps-exchange/target/release/chart-service /usr/local/bin/
+COPY --from=builder /usr/src/perps-exchange/target/release/telegram-bot /usr/local/bin/
 
 COPY --from=builder /usr/src/perps-exchange/configs /app/configs
 COPY --from=builder /usr/src/perps-exchange/configs/common.docker.toml /app/configs/common.toml

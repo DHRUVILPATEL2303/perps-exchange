@@ -235,6 +235,7 @@ services:
       - TRADING_SERVICE_URL=http://trading-service:50052
       - ACCOUNT_SERVICE_URL=http://account-service:50053
       - CHART_SERVICE_URL=http://chart-service:50058
+      - DISABLE_LOGS=true
     depends_on:
       trading-service:
         condition: service_started
@@ -315,6 +316,21 @@ services:
       - QUERY_UI_CONFIG=/etc/jaeger/jaeger-ui.json
     volumes:
       - ./docker/jaeger/jaeger-ui.json:/etc/jaeger/jaeger-ui.json
+
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-bot
+    command: ["telegram-bot"]
+    environment:
+      - RUST_LOG=info
+      - TELOXIDE_TOKEN=8233121865:AAGKof5-00eWRzqW1NTT_d1ZyGwIIo5-PlM
+      - KAFKA_BROKERS=kafka:29092
+      - TELEGRAM_MINI_APP_URL=https://dhruvilpatel.github.io/perps-tma-placeholder
+    depends_on:
+      kafka:
+        condition: service_started
 
 volumes:
   postgres_data:

@@ -32,7 +32,8 @@ pub struct HTTPCancelOrderRequest {
 
 pub async fn get_positions(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
     let user_id = path.into_inner();
-    let mut client = state.trading_client.clone();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
     let req = GetPostionsRequest {
         user_id: user_id.to_string(),
     };
@@ -44,7 +45,8 @@ pub async fn get_positions(state: Data<AppState>, path: Path<Uuid>) -> HttpRespo
 
 pub async fn place_order(state: Data<AppState>, body: Json<HTTPPlaceOrderRequest>) -> HttpResponse {
     let req = body.into_inner();
-    let mut client = state.trading_client.clone();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
     let grpc_req = PlaceOrderRequest {
         user_id: req.user_id.to_string(),
         symbol: req.symbol,
@@ -67,7 +69,8 @@ pub async fn place_order(state: Data<AppState>, body: Json<HTTPPlaceOrderRequest
 
 pub async fn cancel_order(state: Data<AppState>, body: Json<HTTPCancelOrderRequest>) -> HttpResponse {
     let req = body.into_inner();
-    let mut client = state.trading_client.clone();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
     let grpc_req = CancelOrderRequest {
         user_id: req.user_id.to_string(),
         order_id: req.order_id.to_string(),
@@ -81,7 +84,8 @@ pub async fn cancel_order(state: Data<AppState>, body: Json<HTTPCancelOrderReque
 
 pub async fn get_open_orders(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
     let user_id = path.into_inner();
-    let mut client = state.trading_client.clone();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
     let grpc_req = GetOpenOrdersRequest {
         user_id: user_id.to_string(),
     };

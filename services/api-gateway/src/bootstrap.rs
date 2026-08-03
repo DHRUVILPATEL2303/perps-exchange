@@ -49,9 +49,15 @@ pub async fn run() -> std::io::Result<()> {
         .await
         .expect("Failed to connect to Market Service");
 
-    let trading_client = TradingServiceClient::connect(trading_url)
-        .await
-        .expect("Failed to connect to Trading Service");
+    let pool_size = 16;
+    let mut trading_clients = Vec::with_capacity(pool_size);
+    for _ in 0..pool_size {
+        let client = TradingServiceClient::connect(trading_url.clone())
+            .await
+            .expect("Failed to connect to Trading Service");
+        trading_clients.push(client);
+    }
+    let trading_pool_index = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
     let account_client = AccountServiceClient::connect(account_url)
         .await
@@ -70,7 +76,8 @@ pub async fn run() -> std::io::Result<()> {
         config: Arc::new(config.clone()),
         market_client,
         account_client,
-        trading_client,
+        trading_clients,
+        trading_pool_index,
         redis_client: redis_client.clone(),
         ws_sessions: ws_sessions.clone(),
         chart_client,
@@ -148,7 +155,10 @@ pub async fn run() -> std::io::Result<()> {
 
         App::new()
             .wrap(cors)
-            .wrap(actix_web::middleware::Logger::new("%a \"%r\" %s %b %Dms"))
+            .wrap(actix_web::middleware::Condition::new(
+                std::env::var("DISABLE_LOGS").unwrap_or_default() != "true",
+                actix_web::middleware::Logger::new("%a \"%r\" %s %b %Dms")
+            ))
             .wrap(telemetry::http::HttpMetrics)
             .service(telemetry::http::metrics_handler)
             .app_data(app_state.clone())

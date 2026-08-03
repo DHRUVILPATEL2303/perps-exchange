@@ -1,0 +1,24 @@
+[package]
+name = "telegram-bot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+rust_decimal.workspace = true
+rdkafka.workspace = true
+futures-util = "0.3"
+
+# Telegram Bot Library
+teloxide = { version = "0.12", features = ["macros"] }
+
+# Internal workspace crates
+config = { path = "../../crates/config" }
+telemetry = { path = "../../crates/telemetry" }
