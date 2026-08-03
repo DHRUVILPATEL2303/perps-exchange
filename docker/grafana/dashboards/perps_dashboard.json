@@ -247,56 +247,348 @@
       }
     },
     {
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
       "id": 6,
       "title": "Matching Engine Orders Processed / Sec",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
-      "targets": [{
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
-        "expr": "sum(rate(orders_processed_total[15s]))",
-        "legendFormat": "TPS",
-        "refId": "A"
-      }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "sum(rate(orders_processed_total[15s]))",
+          "legendFormat": "TPS",
+          "refId": "A"
+        }
+      ]
     },
     {
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
       "id": 7,
       "title": "Matching Engine Order Latency (ms)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
-      "targets": [{
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
-        "expr": "histogram_quantile(0.99, sum(rate(matching_duration_seconds_bucket[1m])) by (le)) * 1000",
-        "legendFormat": "p99 (ms)",
-        "refId": "A"
-      }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum(rate(matching_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "refId": "A"
+        }
+      ]
     },
     {
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
       "id": 8,
       "title": "Raw Kafka Messages Consumed / Sec",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
-      "targets": [{
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
-        "expr": "sum(rate(kafka_messages_consumed_total[15s]))",
-        "legendFormat": "Messages / sec",
-        "refId": "A"
-      }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "sum(rate(kafka_messages_consumed_total[15s]))",
+          "legendFormat": "Messages / sec",
+          "refId": "A"
+        }
+      ]
     },
     {
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
       "id": 9,
       "title": "Raw Kafka Messages Produced / Sec (Trading Service)",
       "type": "timeseries",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
-      "targets": [{
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
-        "expr": "sum(rate(kafka_messages_produced_total[15s]))",
-        "legendFormat": "Messages / sec",
-        "refId": "A"
-      }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "expr": "sum(rate(kafka_messages_produced_total[15s]))",
+          "legendFormat": "Messages / sec",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Trading Engine place_order Latency (ms)",
+      "id": 10,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(grpc_request_duration_seconds_bucket{method=\"/trading.TradingService/PlaceOrder\"}[1m])) by (le)) * 1000",
+          "legendFormat": "p99 Latency (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(grpc_request_duration_seconds_bucket{method=\"/trading.TradingService/PlaceOrder\"}[1m])) by (le)) * 1000",
+          "legendFormat": "p95 Latency (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trading Engine Risk Check Latency (ms)",
+      "id": 11,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(trading_risk_check_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(trading_risk_check_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trading Engine DB Insert Latency (ms)",
+      "id": 12,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(trading_db_insert_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(trading_db_insert_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trading Engine Margin Lock Latency (ms)",
+      "id": 13,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(trading_margin_lock_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(trading_margin_lock_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trading Engine Kafka Publish Latency (ms)",
+      "id": 14,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(trading_kafka_publish_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(trading_kafka_publish_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
     }
   ],
   "schemaVersion": 38,

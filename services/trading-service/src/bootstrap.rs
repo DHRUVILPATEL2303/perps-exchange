@@ -4,12 +4,18 @@ use crate::{
     grpc::server::TradingGrpcService,
     infrastructure::{
         cache::market_cache::MarketCache,
-        grpc::{account_client::AccountGrpcClient, market_client::MarketGrpcClient, risk_client::RiskGrpcClient},
-        kafka::{trading_consumer::TradeConsumer, producer::OrderProducer, liquidation_consumer::LiquidationConsumer},
+        grpc::{
+            account_client::AccountGrpcClient, market_client::MarketGrpcClient,
+            risk_client::RiskGrpcClient,
+        },
+        kafka::{
+            liquidation_consumer::LiquidationConsumer, producer::OrderProducer,
+            trading_consumer::TradeConsumer,
+        },
         repositories::{
+            postgres_order_repository::PostgresOrderRepository,
             postgres_position_repository::PostgresPositionRepository,
             postgres_trade_repository::PostgresTradeRepository,
-            postgres_order_repository::PostgresOrderRepository,
         },
     },
     state::AppState,
@@ -33,6 +39,7 @@ pub async fn bootstrap() -> Result<(
 
     telemetry::http::spawn_metrics_server(config.server.port);
 
+
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
         .parse()
         .expect("Invalid gRPC address");
@@ -55,9 +62,12 @@ pub async fn bootstrap() -> Result<(
         sqlx::migrate!("./migrations").run(db.pool()).await?;
     }
 
-    let market_url = std::env::var("MARKET_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
-    let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
-    let risk_url = std::env::var("RISK_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50057".to_string());
+    let market_url = std::env::var("MARKET_SERVICE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
+    let account_url = std::env::var("ACCOUNT_SERVICE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+    let risk_url =
+        std::env::var("RISK_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50057".to_string());
 
     println!("Connecting to Market Service...");
     let mut market_client = MarketGrpcClient::connect(market_url).await?;
@@ -86,7 +96,10 @@ pub async fn bootstrap() -> Result<(
     let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
     let order_repository = Arc::new(PostgresOrderRepository::new(db.pool().clone()));
 
-    let position_service = Arc::new(PositionService::new(position_repository.clone(), account_client.clone()));
+    let position_service = Arc::new(PositionService::new(
+        position_repository.clone(),
+        account_client.clone(),
+    ));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 
     let grpc_service = TradingGrpcService {
@@ -102,15 +115,19 @@ pub async fn bootstrap() -> Result<(
         .add_service(TradingServiceServer::new(grpc_service))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
-    let trade_consumer =
-        TradeConsumer::new(&brokers, "trading-service-group-v2", position_service.clone(), order_repository.clone())?;
+    let trade_consumer = TradeConsumer::new(
+        &brokers,
+        "trading-service-group-v2",
+        position_service.clone(),
+        order_repository.clone(),
+    )?;
 
     let liquidation_consumer = LiquidationConsumer::new(
         &brokers,
         "trading-service-liq-group-v2",
         position_repository,
         account_client,
-        order_producer.clone()
+        order_producer.clone(),
     )?;
 
     let state = AppState {

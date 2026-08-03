@@ -59,6 +59,33 @@ pub static KAFKA_MESSAGES_PRODUCED_TOTAL: LazyLock<CounterVec> = LazyLock::new(|
     counter
 });
 
+pub static TRADING_RISK_CHECK_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("trading_risk_check_duration_seconds", "Time taken for the Risk Engine to approve the order");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static TRADING_DB_INSERT_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("trading_db_insert_duration_seconds", "Time taken to save the order in PostgreSQL");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static TRADING_MARGIN_LOCK_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("trading_margin_lock_duration_seconds", "Time taken for the Account Service to lock the margin");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static TRADING_KAFKA_PUBLISH_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("trading_kafka_publish_duration_seconds", "Time taken to produce the raw order to Kafka");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
 pub fn gather_metrics() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();

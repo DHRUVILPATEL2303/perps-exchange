@@ -21,19 +21,11 @@ services:
       retries: 5
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.0
+    image: edoburu/pgbouncer:latest
     container_name: perps-pgbouncer
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=*
-      - PORT=6432
-      - POOL_MODE=transaction
-      - MAX_CLIENT_CONN=1000
-      - DEFAULT_POOL_SIZE=40
-      - AUTH_TYPE=any
+    volumes:
+      - ./configs/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini
+      - ./configs/userlist.txt:/etc/pgbouncer/userlist.txt
     ports:
       - "6432:6432"
     depends_on:
@@ -157,6 +149,7 @@ services:
       init-kafka:
         condition: service_completed_successfully
 
+
   risk-engine-service:
     build:
       context: .
@@ -202,6 +195,7 @@ services:
         condition: service_started
       init-kafka:
         condition: service_completed_successfully
+
 
   oracle-aggregator:
     build:

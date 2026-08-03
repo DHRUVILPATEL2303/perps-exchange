@@ -31,9 +31,11 @@ impl GrpcTradingService for TradingGrpcService {
         &self,
         request: Request<PlaceOrderRequest>,
     ) -> Result<Response<PlaceOrderResponse>, Status> {
+        let start_time = std::time::Instant::now();
         let req = request.into_inner();
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
 
+        let risk_start = std::time::Instant::now();
         let check_res = self
             .risk_client
             .check_order_margin(
@@ -47,6 +49,10 @@ impl GrpcTradingService for TradingGrpcService {
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+        telemetry::metrics::TRADING_RISK_CHECK_DURATION_SECONDS
+            .with_label_values(&[&req.symbol])
+            .observe(risk_start.elapsed().as_secs_f64());
+        tracing::info!("Risk check for {} took {:?}", req.symbol, risk_start.elapsed());
 
         if !check_res.approved {
             return Ok(Response::new(PlaceOrderResponse {
@@ -77,11 +83,17 @@ impl GrpcTradingService for TradingGrpcService {
             status: "OPEN".to_string(),
         };
 
+        let db_start = std::time::Instant::now();
         self.order_repository
             .create(order_entity)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+        telemetry::metrics::TRADING_DB_INSERT_DURATION_SECONDS
+            .with_label_values(&[&req.symbol])
+            .observe(db_start.elapsed().as_secs_f64());
+        tracing::info!("DB insert for {} took {:?}", req.symbol, db_start.elapsed());
 
+        let account_start = std::time::Instant::now();
         self.account_client
             .lock_margin(
                 req.user_id.clone(),
@@ -90,6 +102,10 @@ impl GrpcTradingService for TradingGrpcService {
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+        telemetry::metrics::TRADING_MARGIN_LOCK_DURATION_SECONDS
+            .with_label_values(&[&req.symbol])
+            .observe(account_start.elapsed().as_secs_f64());
+        tracing::info!("Margin lock for {} took {:?}", req.symbol, account_start.elapsed());
 
         let kafka_event = KafkaOrderEvent {
             id: order_id.to_string(),
@@ -102,6 +118,7 @@ impl GrpcTradingService for TradingGrpcService {
             action: "PLACE".to_string(),
         };
 
+        let kafka_start = std::time::Instant::now();
         if let Err(publish_err) = self.order_producer.publish_order(&kafka_event).await {
             tracing::error!(
                 "Failed to publish order {} to Kafka: {}. Executing SAGA compensating rollback...",
@@ -143,6 +160,17 @@ impl GrpcTradingService for TradingGrpcService {
                 publish_err
             )));
         }
+        telemetry::metrics::TRADING_KAFKA_PUBLISH_DURATION_SECONDS
+            .with_label_values(&[&req.symbol])
+            .observe(kafka_start.elapsed().as_secs_f64());
+        tracing::info!("Kafka publish for {} took {:?}", req.symbol, kafka_start.elapsed());
+
+        let elapsed = start_time.elapsed();
+        tracing::info!(
+            " Order {} processed and published to Kafka in {:?}",
+            order_id,
+            elapsed
+        );
 
         Ok(Response::new(PlaceOrderResponse {
             order_id: order_id.to_string(),
