@@ -21,7 +21,6 @@ use proto::trading::trading_service_server::TradingServiceServer;
 use sqlx::{Connection, PgConnection};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tonic::transport::Server;
 
 pub async fn bootstrap() -> Result<(
@@ -73,14 +72,10 @@ pub async fn bootstrap() -> Result<(
     );
 
     println!("Connecting to Account Service...");
-    let account_client = Arc::new(Mutex::new(
-        AccountGrpcClient::connect(account_url).await?,
-    ));
+    let account_client = AccountGrpcClient::connect(account_url).await?;
 
     println!("Connecting to Risk Service...");
-    let risk_client = Arc::new(
-        RiskGrpcClient::connect(risk_url).await?,
-    );
+    let risk_client = RiskGrpcClient::connect(risk_url).await?;
 
     let brokers = config.kafka.brokers.join(",");
     let order_producer = Arc::new(OrderProducer::new(&brokers)?);

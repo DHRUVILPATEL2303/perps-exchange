@@ -16,13 +16,13 @@ use crate::{
 
 pub struct PositionService {
     repository: Arc<dyn PositionRepository>,
-    account_client: Arc<Mutex<AccountGrpcClient>>,
+    account_client: AccountGrpcClient,
 }
 
 impl PositionService {
     pub fn new(
         repository: Arc<dyn PositionRepository>,
-        account_client: Arc<Mutex<AccountGrpcClient>>,
+        account_client: AccountGrpcClient,
     ) -> Self {
         Self {
             repository,
@@ -97,7 +97,7 @@ impl PositionUseCase for PositionService {
 
                 let updated = self.repository.update(existing).await?;
 
-                let mut client = self.account_client.lock().await;
+                let client = &self.account_client;
                 if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
                     tracing::error!("Failed to release margin: {:?}", e);
                 }
@@ -136,7 +136,7 @@ impl PositionUseCase for PositionService {
                 existing.updated_at = Utc::now();
                 self.repository.update(existing).await?;
 
-                let mut client = self.account_client.lock().await;
+                let client = &self.account_client;
                 if let Err(e) = client.release_margin(user_id.to_string(), released_margin.to_string(), order_id.to_string()).await {
                     tracing::error!("Failed to release margin: {:?}", e);
                 }

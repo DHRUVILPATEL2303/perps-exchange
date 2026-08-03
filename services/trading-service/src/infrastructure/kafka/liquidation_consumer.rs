@@ -9,7 +9,6 @@ use rdkafka::message::Message;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
@@ -24,7 +23,7 @@ pub struct LiquidationEvent {
 pub struct LiquidationConsumer {
     consumer: StreamConsumer,
     position_repository: Arc<dyn PositionRepository>,
-    account_client: Arc<Mutex<AccountGrpcClient>>,
+    account_client: AccountGrpcClient,
     order_producer: Arc<crate::infrastructure::kafka::producer::OrderProducer>,
 }
 
@@ -33,7 +32,7 @@ impl LiquidationConsumer {
         brokers: &str,
         group_id: &str,
         position_repository: Arc<dyn PositionRepository>,
-        account_client: Arc<Mutex<AccountGrpcClient>>,
+        account_client: AccountGrpcClient,
         order_producer: Arc<crate::infrastructure::kafka::producer::OrderProducer>,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()

@@ -19,7 +19,7 @@ pub struct AppState {
     pub trading_service: Arc<TradingService>,
     pub market_cache: Arc<MarketCache>,
     pub position_service: Arc<dyn PositionUseCase>,
-    pub risk_client: Arc<RiskGrpcClient>,
+    pub risk_client: RiskGrpcClient,
     pub order_producer: Arc<OrderProducer>,
     pub order_repository: Arc<dyn OrderRepository>,
 }

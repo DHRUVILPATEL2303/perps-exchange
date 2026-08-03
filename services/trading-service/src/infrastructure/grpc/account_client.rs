@@ -8,6 +8,7 @@ use proto::account::{
 };
 use tonic::transport::{Channel, Endpoint};
 
+#[derive(Clone)]
 pub struct AccountGrpcClient {
     client: AccountServiceClient<Channel>,
 }
@@ -20,39 +21,43 @@ impl AccountGrpcClient {
         Ok(Self { client })
     }
 
-    pub async fn get_balance(&mut self, user_id: String, asset: String) -> Result<GetBalanceResponse> {
+    pub async fn get_balance(&self, user_id: String, asset: String) -> Result<GetBalanceResponse> {
+        let mut client = self.client.clone();
         let request = tonic::Request::new(GetBalanceRequest { user_id, asset });
-        let response = self.client.get_balance(request).await?;
+        let response = client.get_balance(request).await?;
         Ok(response.into_inner())
     }
 
-    pub async fn lock_margin(&mut self, user_id: String, amount: String, reference_id: String) -> Result<LockMarginResponse> {
+    pub async fn lock_margin(&self, user_id: String, amount: String, reference_id: String) -> Result<LockMarginResponse> {
+        let mut client = self.client.clone();
         let request = tonic::Request::new(LockMarginRequest {
             user_id,
             amount,
             reference_id,
         });
-        let response = self.client.lock_margin(request).await?;
+        let response = client.lock_margin(request).await?;
         Ok(response.into_inner())
     }
 
-    pub async fn release_margin(&mut self, user_id: String, amount: String, reference_id: String) -> Result<ReleaseMarginResponse> {
+    pub async fn release_margin(&self, user_id: String, amount: String, reference_id: String) -> Result<ReleaseMarginResponse> {
+        let mut client = self.client.clone();
         let request = tonic::Request::new(ReleaseMarginRequest {
             user_id,
             amount,
             reference_id,
         });
-        let response = self.client.release_margin(request).await?;
+        let response = client.release_margin(request).await?;
         Ok(response.into_inner())
     }
 
-    pub async fn adjust_margin(&mut self, user_id: String, amount: String, adjustment_type: String) -> Result<AdjustMarginResponse> {
+    pub async fn adjust_margin(&self, user_id: String, amount: String, adjustment_type: String) -> Result<AdjustMarginResponse> {
+        let mut client = self.client.clone();
         let request = tonic::Request::new(AdjustMarginRequest {
             user_id,
             amount,
             adjustment_type,
         });
-        let response = self.client.adjust_margin(request).await?;
+        let response = client.adjust_margin(request).await?;
         Ok(response.into_inner())
     }
 }

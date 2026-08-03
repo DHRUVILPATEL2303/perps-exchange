@@ -22,8 +22,8 @@ use proto::trading::{
 
 pub struct TradingGrpcService {
     pub position_service: Arc<dyn PositionUseCase>,
-    pub account_client: Arc<Mutex<AccountGrpcClient>>,
-    pub risk_client: Arc<RiskGrpcClient>,
+    pub account_client: AccountGrpcClient,
+    pub risk_client: RiskGrpcClient,
     pub order_producer: Arc<OrderProducer>,
     pub order_repository: Arc<dyn OrderRepository>,
 }
@@ -75,16 +75,13 @@ impl GrpcTradingService for TradingGrpcService {
         self.order_repository.create(order_entity).await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        {
-            let mut acc_client = self.account_client.lock().await;
-            acc_client.lock_margin(
-                req.user_id.clone(),
-                check_res.required_margin.clone(),
-                order_id.to_string(),
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-        }
+        self.account_client.lock_margin(
+            req.user_id.clone(),
+            check_res.required_margin.clone(),
+            order_id.to_string(),
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
 
         let kafka_event = KafkaOrderEvent {
             id: order_id.to_string(),
@@ -100,15 +97,12 @@ impl GrpcTradingService for TradingGrpcService {
         if let Err(publish_err) = self.order_producer.publish_order(&kafka_event).await {
             tracing::error!("Failed to publish order {} to Kafka: {}. Executing SAGA compensating rollback...", order_id, publish_err);
 
-            {
-                let mut acc_client = self.account_client.lock().await;
-                if let Err(rollback_err) = acc_client.release_margin(
-                    req.user_id.clone(),
-                    check_res.required_margin.clone(),
-                    order_id.to_string(),
-                ).await {
-                    tracing::error!("SAGA CRITICAL ERROR: Failed to release margin rollback for user {} order {}: {:?}", req.user_id, order_id, rollback_err);
-                }
+            if let Err(rollback_err) = self.account_client.release_margin(
+                req.user_id.clone(),
+                check_res.required_margin.clone(),
+                order_id.to_string(),
+            ).await {
+                tracing::error!("SAGA CRITICAL ERROR: Failed to release margin rollback for user {} order {}: {:?}", req.user_id, order_id, rollback_err);
             }
 
         
