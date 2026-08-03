@@ -11,6 +11,7 @@ services:
       - POSTGRES_DB=perps
     ports:
       - "5432:5432"
+    command: ["postgres", "-c", "max_connections=500"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,6 +19,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    container_name: perps-pgbouncer
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=*
+      - PORT=6432
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=40
+      - AUTH_TYPE=any
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -82,13 +103,14 @@ services:
       - "50051:50051"
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
 
   account-service:
     build:
@@ -100,13 +122,14 @@ services:
       - "50053:50053"
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
 
   trading-service:
     build:
@@ -118,7 +141,8 @@ services:
       - "50052:50052"
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
@@ -126,8 +150,8 @@ services:
       - ACCOUNT_SERVICE_URL=http://account-service:50053
       - RISK_SERVICE_URL=http://risk-engine-service:50057
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       kafka:
         condition: service_started
       init-kafka:
@@ -143,15 +167,16 @@ services:
       - "50057:50057"
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
       - ACCOUNT_SERVICE_URL=http://account-service:50053
       - TRADING_SERVICE_URL=http://trading-service:50052
     depends_on:
-      postgres:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       kafka:
         condition: service_started
       init-kafka:
@@ -165,7 +190,8 @@ services:
     command: ["matching-engine"]
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
@@ -185,7 +211,8 @@ services:
     command: ["oracle-aggregator"]
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
@@ -205,7 +232,8 @@ services:
     command: ["binance-liquidation"]
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
@@ -227,7 +255,8 @@ services:
 
     environment:
       - RUST_LOG=info
-      - DATABASE__HOST=postgres
+      - DATABASE__HOST=pgbouncer
+      - DATABASE__PORT=6432
       - REDIS__HOST=redis
       - SERVER__HOST=0.0.0.0
       - GRPC__HOST=0.0.0.0
