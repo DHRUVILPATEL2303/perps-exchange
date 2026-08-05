@@ -97,6 +97,11 @@ impl LiquidationConsumer {
                     "BUY"
                 };
 
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_micros() as u64;
+
                 let kill_order = crate::infrastructure::kafka::producer::KafkaOrderEvent {
                     id: Uuid::new_v4().to_string(),
                     user_id: event.user_id.to_string(),
@@ -106,6 +111,7 @@ impl LiquidationConsumer {
                     price: "0".to_string(),
                     quantity: position.size.to_string(),
                     action: "CREATE".to_string(),
+                    timestamp,
                 };
 
                 self.order_producer.publish_order(&kill_order).await?;

@@ -589,6 +589,54 @@
           "unit": "ms"
         }
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka Transit Queue Latency (ms)",
+      "id": 15,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.99, sum(rate(order_transit_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum(rate(order_transit_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth"
+          },
+          "unit": "ms"
+        }
+      }
     }
   ],
   "schemaVersion": 38,

@@ -29,6 +29,7 @@ pub struct IncomingOrder {
     pub price: String,
     pub quantity: String,
     pub action: Option<String>,
+    pub timestamp: Option<u64>,
 }
 
 pub struct OrderConsumer {
@@ -44,7 +45,8 @@ impl OrderConsumer {
             .set("group.id", group_id)
             .set("auto.offset.reset", "earliest")
             .set("enable.auto.commit", "true")
-            .set_log_level(RDKafkaLogLevel::Warning)
+            .set("debug", "consumer,cgrp,topic")
+            .set_log_level(RDKafkaLogLevel::Debug)
             .create()?;
 
         consumer.subscribe(&["order-events"])?;
@@ -69,6 +71,7 @@ impl OrderConsumer {
             match msg_result {
                 Err(e) => tracing::error!("Kafka error: {}", e),
                 Ok(msg) => {
+                    tracing::info!("Received message from order-events with key: {:?}", msg.key().map(String::from_utf8_lossy));
                     KAFKA_MESSAGES_CONSUMED_TOTAL.with_label_values(&["order-events"]).inc();
                     if let Some(payload) = msg.payload() {
                         match serde_json::from_slice::<IncomingOrder>(payload) {
@@ -125,6 +128,19 @@ async fn symbol_worker(
                 };
 
                 let start_time = Instant::now();
+
+                if let Some(sent_ts_us) = incoming.timestamp {
+                    let now_us = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_micros() as u64;
+                    if now_us >= sent_ts_us {
+                        let transit_sec = (now_us - sent_ts_us) as f64 / 1_000_000.0;
+                        telemetry::metrics::ORDER_TRANSIT_DURATION_SECONDS
+                            .with_label_values(&[&symbol])
+                            .observe(transit_sec);
+                    }
+                }
 
                 let span = info_span!("match_order", symbol = %symbol, order_id = %incoming.id);
                 let _enter = span.enter();

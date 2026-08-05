@@ -11,6 +11,7 @@ members = [
     "crates/proto",
     "crates/tui-client",
     "crates/desktop-client/src-tauri",
+    "crates/load-tester",
 
     "services/api-gateway",
     "services/account-service",

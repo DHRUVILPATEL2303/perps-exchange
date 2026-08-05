@@ -107,6 +107,11 @@ impl GrpcTradingService for TradingGrpcService {
             .observe(account_start.elapsed().as_secs_f64());
         tracing::info!("Margin lock for {} took {:?}", req.symbol, account_start.elapsed());
 
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+
         let kafka_event = KafkaOrderEvent {
             id: order_id.to_string(),
             user_id: req.user_id.clone(),
@@ -116,6 +121,7 @@ impl GrpcTradingService for TradingGrpcService {
             price: price_str.to_string(),
             quantity: req.quantity.clone(),
             action: "PLACE".to_string(),
+            timestamp,
         };
 
         let kafka_start = std::time::Instant::now();
@@ -185,6 +191,11 @@ impl GrpcTradingService for TradingGrpcService {
     ) -> Result<Response<CancelOrderResponse>, Status> {
         let req = request.into_inner();
 
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+
         let kafka_event = KafkaOrderEvent {
             id: req.order_id.clone(),
             user_id: req.user_id.clone(),
@@ -194,6 +205,7 @@ impl GrpcTradingService for TradingGrpcService {
             price: "0.00".to_string(),
             quantity: "0.00".to_string(),
             action: "CANCEL".to_string(),
+            timestamp,
         };
 
         self.order_producer

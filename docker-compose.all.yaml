@@ -131,6 +131,7 @@ services:
     command: ["trading-service"]
     ports:
       - "50052:50052"
+      - "8082:8082"
     environment:
       - RUST_LOG=info
       - DATABASE__HOST=pgbouncer
@@ -181,8 +182,10 @@ services:
       dockerfile: Dockerfile
     container_name: matching-engine
     command: ["matching-engine"]
+    ports:
+      - "8086:8086"
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=debug
       - DATABASE__HOST=pgbouncer
       - DATABASE__PORT=6432
       - REDIS__HOST=redis

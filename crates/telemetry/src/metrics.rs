@@ -86,6 +86,13 @@ pub static TRADING_KAFKA_PUBLISH_DURATION_SECONDS: LazyLock<HistogramVec> = Lazy
     REGISTRY.register(Box::new(histogram.clone())).unwrap();
     histogram
 });
+
+pub static ORDER_TRANSIT_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("order_transit_duration_seconds", "Time taken for order to transit from trading-service to matching-engine via Kafka in seconds");
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
 pub fn gather_metrics() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();
