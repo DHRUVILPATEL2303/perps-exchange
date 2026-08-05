@@ -4,17 +4,19 @@ use crate::domain::entities::trade::Trade;
 use crate::infrastructure::kafka::producer::TradeProducer;
 use anyhow::Result;
 use chrono::Utc;
-use rustc_hash::FxHashMap;
 use futures_util::StreamExt;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use rust_decimal::Decimal;
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
-use telemetry::metrics::{MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL, KAFKA_MESSAGES_CONSUMED_TOTAL};
+use telemetry::metrics::{
+    KAFKA_MESSAGES_CONSUMED_TOTAL, MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL,
+};
 use tokio::sync::mpsc;
 use tracing::{Instrument, info_span};
 use uuid::Uuid;
@@ -54,16 +56,13 @@ impl OrderConsumer {
 
         consumer.subscribe(&["order-events"])?;
 
-        Ok(Self {
-            consumer,
-            producer,
-        })
+        Ok(Self { consumer, producer })
     }
 
     pub async fn run(self) {
         let consumer = self.consumer;
         let producer = self.producer;
-        
+
         let mut router: FxHashMap<String, mpsc::Sender<IncomingOrder>> = FxHashMap::default();
 
         let mut stream = consumer.stream();
@@ -74,7 +73,9 @@ impl OrderConsumer {
             match msg_result {
                 Err(e) => tracing::error!("Kafka error: {}", e),
                 Ok(msg) => {
-                    KAFKA_MESSAGES_CONSUMED_TOTAL.with_label_values(&["order-events"]).inc();
+                    KAFKA_MESSAGES_CONSUMED_TOTAL
+                        .with_label_values(&["order-events"])
+                        .inc();
                     if let Some(payload) = msg.payload() {
                         match bincode::deserialize::<IncomingOrder>(payload) {
                             Ok(incoming) => {
@@ -120,6 +121,27 @@ async fn symbol_worker(
     tracing::info!("Started dedicated matching worker for {}", symbol);
     let mut book = OrderBook::new(symbol.clone());
     let mut depth_interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
+    let (trade_tx, mut trade_rx) = mpsc::channel(100_000);
+    let p_trades = producer.clone();
+    tokio::spawn(async move {
+        while let Some(trade) = trade_rx.recv().await {
+            if let Err(e) = p_trades.publish_trade_sync(&trade).await {
+                tracing::error!("Failed to publish trade: {}", e);
+            }
+        }
+    });
+
+    let (depth_tx, mut depth_rx) = mpsc::channel(100);
+    let p_depth = producer.clone();
+    let d_symbol = symbol.clone();
+    tokio::spawn(async move {
+        while let Some((bids, asks)) = depth_rx.recv().await {
+            if let Err(e) = p_depth.publish_depth_sync(&d_symbol, bids, asks).await {
+                tracing::error!("Failed to publish depth: {}", e);
+            }
+        }
+    });
 
     loop {
         tokio::select! {
@@ -171,9 +193,7 @@ async fn symbol_worker(
                     executed_at: Utc::now(),
                 };
 
-                if let Err(e) = producer.publish_trade_sync(&cancel_trade) {
-                    tracing::error!("Failed to publish cancel trade: {}", e);
-                }
+                let _ = trade_tx.try_send(cancel_trade);
             }
             ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_cancel"]).inc();
         } else {
@@ -205,9 +225,7 @@ async fn symbol_worker(
 
             let trades = book.match_order(taker);
             for trade in trades {
-                if let Err(e) = producer.publish_trade_sync(&trade) {
-                    tracing::error!("Failed to publish trade: {}", e);
-                }
+                let _ = trade_tx.try_send(trade);
             }
             ORDERS_PROCESSED_TOTAL.with_label_values(&[&symbol, "success_match"]).inc();
         }
@@ -217,9 +235,7 @@ async fn symbol_worker(
             }
             _ = depth_interval.tick() => {
                 let (bids, asks) = book.get_l2_depth(10);
-                if let Err(e) = producer.publish_depth_sync(&symbol, bids, asks) {
-                    tracing::error!("Failed to publish depth: {}", e);
-                }
+                let _ = depth_tx.try_send((bids, asks));
             }
         }
     }

@@ -39,7 +39,18 @@ pub static ORDERS_PROCESSED_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
 });
 
 pub static MATCHING_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    let opts = HistogramOpts::new("matching_duration_seconds", "Time taken to match an order in seconds");
+    let opts = HistogramOpts::new("matching_duration_seconds", "Time taken to match an order in seconds")
+        .buckets(vec![
+            0.000001, // 1 us
+            0.000005, // 5 us
+            0.000010, // 10 us
+            0.000050, // 50 us
+            0.000100, // 100 us
+            0.000500, // 500 us
+            0.001,    // 1 ms
+            0.005,    // 5 ms
+            0.010,    // 10 ms
+        ]);
     let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
     REGISTRY.register(Box::new(histogram.clone())).unwrap();
     histogram

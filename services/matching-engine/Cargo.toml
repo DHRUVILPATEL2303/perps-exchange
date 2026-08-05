@@ -23,6 +23,7 @@ dashmap = "6"
 bincode.workspace = true
 mimalloc.workspace = true
 rustc-hash.workspace = true
+redis.workspace = true
 
 proto = { path = "../../crates/proto" }
 config = { path = "../../crates/config" }

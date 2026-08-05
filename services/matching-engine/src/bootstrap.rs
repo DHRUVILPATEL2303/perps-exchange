@@ -10,8 +10,12 @@ pub async fn bootstrap() -> Result<()> {
 
 
     let brokers = config.kafka.brokers.join(",");
+    
+    let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
+    let redis_client = redis::Client::open(redis_url)?;
+    let redis_conn = redis_client.get_multiplexed_async_connection().await?;
 
-    let producer = Arc::new(TradeProducer::new(&brokers)?);
+    let producer = Arc::new(TradeProducer::new(&brokers, redis_conn)?);
 
     let consumer = OrderConsumer::new(&brokers, "matching-engine-group", producer)?;
 
