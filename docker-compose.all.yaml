@@ -248,7 +248,7 @@ services:
     command: ["api-gateway"]
     ports:
      - "8080:8080"
-     - "4433:4433/udp" 
+     - "4433:4433/udp"
 
     environment:
       - RUST_LOG=info

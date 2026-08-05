@@ -4,7 +4,7 @@ use crate::domain::entities::trade::Trade;
 use crate::infrastructure::kafka::producer::TradeProducer;
 use anyhow::Result;
 use chrono::Utc;
-use dashmap::DashMap;
+use rustc_hash::FxHashMap;
 use futures_util::StreamExt;
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
@@ -21,20 +21,19 @@ use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
 pub struct IncomingOrder {
-    pub id: String,
-    pub user_id: String,
+    pub id: Uuid,
+    pub user_id: Uuid,
     pub symbol: String,
     pub side: String,
     pub order_type: String,
     pub price: String,
     pub quantity: String,
-    pub action: Option<String>,
-    pub timestamp: Option<u64>,
+    pub action: String,
+    pub timestamp: u64,
 }
 
 pub struct OrderConsumer {
     consumer: StreamConsumer,
-    router: Arc<DashMap<String, mpsc::Sender<IncomingOrder>>>,
     producer: Arc<TradeProducer>,
 }
 
@@ -42,9 +41,13 @@ impl OrderConsumer {
     pub fn new(brokers: &str, group_id: &str, producer: Arc<TradeProducer>) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
-            .set("group.id", group_id)
+            .set("group.id", "matching-engine-group")
             .set("auto.offset.reset", "earliest")
-            .set("enable.auto.commit", "true")
+            .set("enable.auto.commit", "false")
+            .set("fetch.message.max.bytes", "104857600")
+            .set("receive.message.max.bytes", "104857600")
+            .set("queued.max.messages.kbytes", "1048576")
+            .set("fetch.wait.max.ms", "500")
             .set("debug", "consumer,cgrp,topic")
             .set_log_level(RDKafkaLogLevel::Debug)
             .create()?;
@@ -53,15 +56,15 @@ impl OrderConsumer {
 
         Ok(Self {
             consumer,
-            router: Arc::new(DashMap::new()),
             producer,
         })
     }
 
     pub async fn run(self) {
         let consumer = self.consumer;
-        let router = self.router;
         let producer = self.producer;
+        
+        let mut router: FxHashMap<String, mpsc::Sender<IncomingOrder>> = FxHashMap::default();
 
         let mut stream = consumer.stream();
 
@@ -71,10 +74,9 @@ impl OrderConsumer {
             match msg_result {
                 Err(e) => tracing::error!("Kafka error: {}", e),
                 Ok(msg) => {
-                    tracing::info!("Received message from order-events with key: {:?}", msg.key().map(String::from_utf8_lossy));
                     KAFKA_MESSAGES_CONSUMED_TOTAL.with_label_values(&["order-events"]).inc();
                     if let Some(payload) = msg.payload() {
-                        match serde_json::from_slice::<IncomingOrder>(payload) {
+                        match bincode::deserialize::<IncomingOrder>(payload) {
                             Ok(incoming) => {
                                 let symbol = incoming.symbol.clone();
 
@@ -129,7 +131,8 @@ async fn symbol_worker(
 
                 let start_time = Instant::now();
 
-                if let Some(sent_ts_us) = incoming.timestamp {
+                if incoming.timestamp > 0 {
+                    let sent_ts_us = incoming.timestamp;
                     let now_us = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
@@ -142,23 +145,10 @@ async fn symbol_worker(
                     }
                 }
 
-                let span = info_span!("match_order", symbol = %symbol, order_id = %incoming.id);
-                let _enter = span.enter();
 
-                let order_id = match Uuid::parse_str(&incoming.id) {
-            Ok(uid) => uid,
-            Err(e) => {
-                tracing::error!("Invalid order UUID: {}", e);
-                continue;
-            }
-        };
-        let user_id = match Uuid::parse_str(&incoming.user_id) {
-            Ok(uid) => uid,
-            Err(e) => {
-                tracing::error!("Invalid user UUID: {}", e);
-                continue;
-            }
-        };
+
+        let order_id = incoming.id;
+        let user_id = incoming.user_id;
 
         let side = match incoming.side.as_str() {
             "BUY" => OrderSide::Buy,
@@ -166,7 +156,7 @@ async fn symbol_worker(
             _ => OrderSide::Buy,
         };
 
-        if incoming.action == Some("CANCEL".to_string()) {
+        if incoming.action == "CANCEL" {
             if let Some((price, qty)) = book.cancel_order(order_id, &side) {
                 let cancel_trade = Trade {
                     id: Uuid::new_v4(),

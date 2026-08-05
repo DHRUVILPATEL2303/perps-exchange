@@ -20,6 +20,9 @@ tonic.workspace = true
 prost.workspace = true
 async-trait.workspace = true
 dashmap = "6"
+bincode.workspace = true
+mimalloc.workspace = true
+rustc-hash.workspace = true
 
 proto = { path = "../../crates/proto" }
 config = { path = "../../crates/config" }

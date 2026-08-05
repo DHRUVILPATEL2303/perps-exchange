@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y \
 
 COPY . .
 
-RUN cargo build --release \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/src/perps-exchange/target \
+    cargo build --release \
     -p market-service \
     -p account-service \
     -p trading-service \
@@ -25,7 +27,18 @@ RUN cargo build --release \
     -p binance-liquidation \
     -p api-gateway \
     -p chart-service \
-    -p telegram-bot
+    -p telegram-bot \
+    && mkdir -p /tmp/bins \
+    && cp target/release/market-service /tmp/bins/ \
+    && cp target/release/account-service /tmp/bins/ \
+    && cp target/release/trading-service /tmp/bins/ \
+    && cp target/release/risk-engine-service /tmp/bins/ \
+    && cp target/release/matching-engine /tmp/bins/ \
+    && cp target/release/oracle-aggregator /tmp/bins/ \
+    && cp target/release/binance-liquidation /tmp/bins/ \
+    && cp target/release/api-gateway /tmp/bins/ \
+    && cp target/release/chart-service /tmp/bins/ \
+    && cp target/release/telegram-bot /tmp/bins/
 
 FROM debian:bookworm-slim
 
@@ -36,16 +49,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY --from=builder /usr/src/perps-exchange/target/release/market-service /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/account-service /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/trading-service /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/risk-engine-service /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/matching-engine /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/oracle-aggregator /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/binance-liquidation /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/api-gateway /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/chart-service /usr/local/bin/
-COPY --from=builder /usr/src/perps-exchange/target/release/telegram-bot /usr/local/bin/
+COPY --from=builder /tmp/bins/market-service /usr/local/bin/
+COPY --from=builder /tmp/bins/account-service /usr/local/bin/
+COPY --from=builder /tmp/bins/trading-service /usr/local/bin/
+COPY --from=builder /tmp/bins/risk-engine-service /usr/local/bin/
+COPY --from=builder /tmp/bins/matching-engine /usr/local/bin/
+COPY --from=builder /tmp/bins/oracle-aggregator /usr/local/bin/
+COPY --from=builder /tmp/bins/binance-liquidation /usr/local/bin/
+COPY --from=builder /tmp/bins/api-gateway /usr/local/bin/
+COPY --from=builder /tmp/bins/chart-service /usr/local/bin/
+COPY --from=builder /tmp/bins/telegram-bot /usr/local/bin/
 
 COPY --from=builder /usr/src/perps-exchange/configs /app/configs
 COPY --from=builder /usr/src/perps-exchange/configs/common.docker.toml /app/configs/common.toml

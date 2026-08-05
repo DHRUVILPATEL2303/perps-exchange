@@ -103,8 +103,8 @@ impl LiquidationConsumer {
                     .as_micros() as u64;
 
                 let kill_order = crate::infrastructure::kafka::producer::KafkaOrderEvent {
-                    id: Uuid::new_v4().to_string(),
-                    user_id: event.user_id.to_string(),
+                    id: Uuid::new_v4(),
+                    user_id: event.user_id,
                     symbol: event.symbol.clone(),
                     side: close_side.to_string(),
                     order_type: "MARKET".to_string(),

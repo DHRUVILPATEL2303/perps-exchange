@@ -1,5 +1,10 @@
 use anyhow::Result;
 
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 pub mod application;
 pub mod bootstrap;
 pub mod domain;

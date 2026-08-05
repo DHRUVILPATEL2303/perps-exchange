@@ -52,7 +52,11 @@ impl GrpcTradingService for TradingGrpcService {
         telemetry::metrics::TRADING_RISK_CHECK_DURATION_SECONDS
             .with_label_values(&[&req.symbol])
             .observe(risk_start.elapsed().as_secs_f64());
-        tracing::info!("Risk check for {} took {:?}", req.symbol, risk_start.elapsed());
+        tracing::info!(
+            "Risk check for {} took {:?}",
+            req.symbol,
+            risk_start.elapsed()
+        );
 
         if !check_res.approved {
             return Ok(Response::new(PlaceOrderResponse {
@@ -105,7 +109,11 @@ impl GrpcTradingService for TradingGrpcService {
         telemetry::metrics::TRADING_MARGIN_LOCK_DURATION_SECONDS
             .with_label_values(&[&req.symbol])
             .observe(account_start.elapsed().as_secs_f64());
-        tracing::info!("Margin lock for {} took {:?}", req.symbol, account_start.elapsed());
+        tracing::info!(
+            "Margin lock for {} took {:?}",
+            req.symbol,
+            account_start.elapsed()
+        );
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -113,8 +121,8 @@ impl GrpcTradingService for TradingGrpcService {
             .as_micros() as u64;
 
         let kafka_event = KafkaOrderEvent {
-            id: order_id.to_string(),
-            user_id: req.user_id.clone(),
+            id: order_id,
+            user_id: Uuid::parse_str(&req.user_id).unwrap_or_default(),
             symbol: req.symbol.clone(),
             side: req.side.clone(),
             order_type: req.order_type.clone(),
@@ -169,7 +177,11 @@ impl GrpcTradingService for TradingGrpcService {
         telemetry::metrics::TRADING_KAFKA_PUBLISH_DURATION_SECONDS
             .with_label_values(&[&req.symbol])
             .observe(kafka_start.elapsed().as_secs_f64());
-        tracing::info!("Kafka publish for {} took {:?}", req.symbol, kafka_start.elapsed());
+        tracing::info!(
+            "Kafka publish for {} took {:?}",
+            req.symbol,
+            kafka_start.elapsed()
+        );
 
         let elapsed = start_time.elapsed();
         tracing::info!(
@@ -197,8 +209,8 @@ impl GrpcTradingService for TradingGrpcService {
             .as_micros() as u64;
 
         let kafka_event = KafkaOrderEvent {
-            id: req.order_id.clone(),
-            user_id: req.user_id.clone(),
+            id: Uuid::parse_str(&req.order_id).unwrap_or_default(),
+            user_id: Uuid::parse_str(&req.user_id).unwrap_or_default(),
             symbol: req.symbol.clone(),
             side: "BUY".to_string(),
             order_type: "LIMIT".to_string(),

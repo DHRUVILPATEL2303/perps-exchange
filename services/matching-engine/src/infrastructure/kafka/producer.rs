@@ -22,6 +22,9 @@ impl TradeProducer {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
             .set("message.timeout.ms", "5000")
+            .set("queue.buffering.max.messages", "1000000")
+            .set("batch.num.messages", "10000")
+            .set("linger.ms", "5")
             .create()?;
 
         Ok(Self { producer })

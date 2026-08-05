@@ -106,14 +106,11 @@ pub async fn run() -> std::io::Result<()> {
         consumer.subscribe(&["orderbook-depth", "execution-reports"])
             .expect("Failed to subscribe to Kafka topics in gateway");
 
+        let mut redis_conn = redis_for_kafka.get_multiplexed_async_connection().await.expect("Failed to connect to Redis for Kafka");
         let mut stream = consumer.stream();
         while let Some(msg_res) = stream.next().await {
             if let Ok(msg) = msg_res {
                 if let Some(payload) = msg.payload() {
-                    let mut redis_conn = match redis_for_kafka.get_multiplexed_async_connection().await {
-                        Ok(conn) => conn,
-                        Err(_) => continue,
-                    };
 
                     match msg.topic() {
                         "orderbook-depth" => {
