@@ -34,6 +34,7 @@ pub struct BookOrder {
     pub filled_quantity: Decimal,
     pub status: OrderStatus,
     pub created_at: DateTime<Utc>,
+    pub leverage: u32,
 }
 
 impl BookOrder {

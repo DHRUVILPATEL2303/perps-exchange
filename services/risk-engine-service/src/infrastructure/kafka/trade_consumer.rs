@@ -21,6 +21,8 @@ pub struct TradeEvent {
     pub price: Decimal,
     pub quantity: Decimal,
     pub taker_side: String,
+    pub maker_leverage: u32,
+    pub taker_leverage: u32,
 }
 
 pub struct TradeConsumer {
@@ -99,6 +101,7 @@ impl TradeConsumer {
             taker_side,
             event.price,
             event.quantity,
+            event.taker_leverage as i32,
         ).await?;
 
         self.update_mirrored_position(
@@ -107,6 +110,7 @@ impl TradeConsumer {
             maker_side,
             event.price,
             event.quantity,
+            event.maker_leverage as i32,
         ).await?;
 
         Ok(())
@@ -119,9 +123,9 @@ impl TradeConsumer {
         trade_side: &str,
         trade_price: Decimal,
         trade_qty: Decimal,
+        leverage: i32,
     ) -> Result<()> {
         let opposite_side = if trade_side == "LONG" { "SHORT" } else { "LONG" };
-        let leverage = 20;
         let mmr = Decimal::new(5, 3);
 
         let opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;

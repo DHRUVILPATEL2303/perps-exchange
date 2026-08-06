@@ -112,6 +112,7 @@ impl LiquidationConsumer {
                     quantity: position.size.to_string(),
                     action: "CREATE".to_string(),
                     timestamp,
+                    leverage: position.leverage as u32,
                 };
 
                 self.order_producer.publish_order(&kill_order).await?;

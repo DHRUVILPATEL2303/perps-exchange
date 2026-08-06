@@ -10,7 +10,7 @@ pub struct OrderBook {
     pub symbol: String,
     pub bids: BTreeMap<Decimal, VecDeque<BookOrder>>,
     pub asks: BTreeMap<Decimal, VecDeque<BookOrder>>,
-    pub orders: FxHashMap<Uuid, (Decimal, OrderSide)>,
+    pub orders: FxHashMap<Uuid, (Decimal, OrderSide, u32)>,
 }
 
 impl OrderBook {
@@ -24,7 +24,7 @@ impl OrderBook {
     }
 
     pub fn add_order(&mut self, order: BookOrder) {
-        self.orders.insert(order.id, (order.price, order.side.clone()));
+        self.orders.insert(order.id, (order.price, order.side.clone(), order.leverage));
         let book_side = match order.side {
             OrderSide::Buy => &mut self.bids,
             OrderSide::Sell => &mut self.asks,
@@ -102,6 +102,8 @@ impl OrderBook {
                     OrderSide::Sell => "SELL".to_string(),
                 },
                 executed_at: Utc::now(),
+                maker_leverage: maker.leverage,
+                taker_leverage: taker.leverage,
             };
 
             trades.push(trade);
@@ -132,8 +134,8 @@ impl OrderBook {
         trades
     }
 
-    pub fn cancel_order(&mut self, order_id: Uuid, _side: &OrderSide) -> Option<(Decimal, Decimal)> {
-        let (price, side) = match self.orders.remove(&order_id) {
+    pub fn cancel_order(&mut self, order_id: Uuid, _side: &OrderSide) -> Option<(Decimal, Decimal, u32)> {
+        let (price, side, leverage) = match self.orders.remove(&order_id) {
             Some(val) => val,
             None => return None,
         };
@@ -147,7 +149,7 @@ impl OrderBook {
         if let Some(level) = book_side.get_mut(&price) {
             if let Some(pos) = level.iter().position(|o| o.id == order_id) {
                 if let Some(order) = level.remove(pos) {
-                    result = Some((order.price, order.quantity));
+                    result = Some((order.price, order.quantity, order.leverage));
                 }
             }
             if level.is_empty() {

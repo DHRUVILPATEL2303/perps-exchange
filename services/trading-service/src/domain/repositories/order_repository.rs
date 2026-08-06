@@ -13,6 +13,7 @@ pub struct OrderEntity {
     pub price: Decimal,
     pub quantity: Decimal,
     pub status: String,
+    pub leverage : i32
 }
 
 #[async_trait]

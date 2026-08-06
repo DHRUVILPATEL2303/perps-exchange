@@ -110,6 +110,7 @@ impl GrpcTradingService for TradingGrpcService {
             quantity: rust_decimal::Decimal::from_str(&req.quantity)
                 .unwrap_or(rust_decimal::Decimal::ZERO),
             status: "OPEN".to_string(),
+            leverage: req.leverage as i32,
         };
 
         let db_start = std::time::Instant::now();
@@ -155,6 +156,7 @@ impl GrpcTradingService for TradingGrpcService {
             quantity: req.quantity.clone(),
             action: "PLACE".to_string(),
             timestamp,
+            leverage: req.leverage,
         };
 
         let kafka_start = std::time::Instant::now();
@@ -243,6 +245,7 @@ impl GrpcTradingService for TradingGrpcService {
             quantity: "0.00".to_string(),
             action: "CANCEL".to_string(),
             timestamp,
+            leverage: 0,
         };
 
         self.order_producer

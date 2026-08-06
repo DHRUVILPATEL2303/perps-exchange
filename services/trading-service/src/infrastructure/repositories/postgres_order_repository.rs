@@ -19,9 +19,9 @@ impl OrderRepository for PostgresOrderRepository {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity> {
         sqlx::query(
             r#"
-            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-            RETURNING id, user_id, symbol, side, order_type, price, quantity, status
+            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage
             "#,
         )
         .bind(order.id)
@@ -32,6 +32,7 @@ impl OrderRepository for PostgresOrderRepository {
         .bind(order.price)
         .bind(order.quantity)
         .bind(order.status)
+        .bind(order.leverage) 
         .fetch_one(&self.pool)
         .await
         .map(|row| OrderEntity {
@@ -43,9 +44,11 @@ impl OrderRepository for PostgresOrderRepository {
             price: row.get("price"),
             quantity: row.get("quantity"),
             status: row.get("status"),
+            leverage: row.get("leverage"), 
         })
         .map_err(Into::into)
     }
+
 
     async fn update_status(&self, id: Uuid, status: &str) -> Result<()> {
         sqlx::query("UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2")
@@ -59,7 +62,7 @@ impl OrderRepository for PostgresOrderRepository {
     async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, symbol, side, order_type, price, quantity, status
+            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage
             FROM orders
             WHERE user_id = $1 AND status = 'OPEN'
             "#,
@@ -79,6 +82,7 @@ impl OrderRepository for PostgresOrderRepository {
                 price: row.get("price"),
                 quantity: row.get("quantity"),
                 status: row.get("status"),
+                leverage: row.get("leverage"),
             })
             .collect();
 

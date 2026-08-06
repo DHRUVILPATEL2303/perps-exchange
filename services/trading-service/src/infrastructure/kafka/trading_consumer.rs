@@ -25,6 +25,8 @@ pub struct TradeEvent {
     pub quantity: String,
     pub taker_side: String,
     pub executed_at: String,
+    pub maker_leverage: u32,
+    pub taker_leverage: u32,
 }
 
 pub struct TradeConsumer {
@@ -85,7 +87,7 @@ impl TradeConsumer {
             let price = Decimal::from_str(&event.price)?;
             let qty = Decimal::from_str(&event.quantity)?;
             
-            let leverage = Decimal::from(20);
+            let leverage = Decimal::from(event.maker_leverage);
             let margin_to_release = (qty * price) / leverage;
 
             self.order_repository.update_status(order_id, "CANCELLED").await?;
@@ -129,7 +131,7 @@ impl TradeConsumer {
             taker_side,
             price,
             qty,
-            20,
+            event.taker_leverage as i32,
             taker_order,
         ).await?;
 
@@ -139,7 +141,7 @@ impl TradeConsumer {
             maker_side,
             price,
             qty,
-            20,
+            event.maker_leverage as i32,
             maker_order,
         ).await?;
 

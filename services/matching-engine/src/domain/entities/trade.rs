@@ -14,4 +14,6 @@ pub struct Trade {
     pub quantity: Decimal,
     pub taker_side: String,
     pub executed_at: DateTime<Utc>,
+    pub maker_leverage: u32,
+    pub taker_leverage: u32,
 }

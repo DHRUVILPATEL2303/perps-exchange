@@ -34,6 +34,7 @@ pub struct IncomingOrder {
     pub quantity: String,
     pub action: String,
     pub timestamp: u64,
+    pub leverage: u32,
     
     #[serde(skip)]
     pub local_received_timestamp: u64,
@@ -245,7 +246,7 @@ async fn symbol_worker(
                 .with_label_values(&[&symbol])
                 .observe(cancel_duration);
 
-            if let Some((price, qty)) = cancel_res {
+            if let Some((price, qty, leverage)) = cancel_res {
                 let cancel_trade = Trade {
                     id: Uuid::new_v4(),
                     symbol: symbol.clone(),
@@ -257,6 +258,8 @@ async fn symbol_worker(
                     quantity: qty,
                     taker_side: "CANCEL".to_string(),
                     executed_at: Utc::now(),
+                    maker_leverage: leverage,
+                    taker_leverage: 0,
                 };
 
                 let _ = trade_tx.try_send(cancel_trade);
@@ -286,6 +289,7 @@ async fn symbol_worker(
                 filled_quantity: Decimal::ZERO,
                 status: OrderStatus::New,
                 created_at: Utc::now(),
+                leverage: incoming.leverage,
             };
 
             let start_match = Instant::now();
