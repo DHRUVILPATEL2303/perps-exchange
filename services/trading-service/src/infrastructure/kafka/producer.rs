@@ -20,6 +20,7 @@ pub struct KafkaOrderEvent {
     pub action: String,
     pub timestamp: u64,
     pub leverage: u32,
+    pub reduce_only: bool,
 }
 
 pub struct OrderProducer {

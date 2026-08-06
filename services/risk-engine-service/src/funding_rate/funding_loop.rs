@@ -7,7 +7,7 @@ use crate::infrastructure::repositories::postgres_position_repository::PositionR
 
 pub async fn run_funding_loop(state: AppState, tracker: PriceTracker) {
     let position_repo = PositionRepository::new(state.db.pool().clone());
-    let mut interval = tokio::time::interval(Duration::from_secs(30)); // 30 seconds for now testing
+    let mut interval = tokio::time::interval(Duration::from_secs(3600));
 
     loop {
         interval.tick().await;

@@ -19,9 +19,9 @@ impl OrderRepository for PostgresOrderRepository {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity> {
         sqlx::query(
             r#"
-            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
-            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction
+            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only
             "#,
         )
         .bind(order.id)
@@ -35,6 +35,7 @@ impl OrderRepository for PostgresOrderRepository {
         .bind(order.leverage) 
         .bind(order.trigger_price)
         .bind(order.trigger_direction)
+        .bind(order.reduce_only)
         .fetch_one(&self.pool)
         .await
         .map(|row| OrderEntity {
@@ -49,6 +50,7 @@ impl OrderRepository for PostgresOrderRepository {
             leverage: row.get("leverage"), 
             trigger_price: row.get("trigger_price"),
             trigger_direction: row.get("trigger_direction"),
+            reduce_only: row.get("reduce_only"),
         })
         .map_err(Into::into)
     }
@@ -66,7 +68,7 @@ impl OrderRepository for PostgresOrderRepository {
     async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction
+            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only
             FROM orders
             WHERE user_id = $1 AND status = 'OPEN'
             "#,
@@ -89,6 +91,7 @@ impl OrderRepository for PostgresOrderRepository {
                 leverage: row.get("leverage"),
                 trigger_price: row.get("trigger_price"),
                 trigger_direction: row.get("trigger_direction"),
+                reduce_only: row.get("reduce_only"),
             })
             .collect();
 

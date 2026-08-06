@@ -86,7 +86,7 @@ pub fn start_trigger_loop(
                           (trigger_direction = 'BELOW' AND $2 <= trigger_price)
                       )
                 )
-                RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage
+                RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, reduce_only
                 "#,
             )
             .bind(&tick.symbol)
@@ -110,6 +110,7 @@ pub fn start_trigger_loop(
                 let price: Decimal = row.get("price");
                 let quantity: Decimal = row.get("quantity");
                 let leverage: i32 = row.get("leverage");
+                let reduce_only: bool = row.get("reduce_only");
 
                 let account_client_clone = account_client.clone();
                 let risk_client_clone = risk_client.clone();
@@ -118,6 +119,72 @@ pub fn start_trigger_loop(
 
                 tokio::spawn(async move {
                     tracing::info!("Triggering conditional order {} for user {}", order_id, user_id);
+
+                    if reduce_only {
+                        let target_pos_side = if side == "BUY" { "SHORT" } else { "LONG" };
+                        let pos_opt = match sqlx::query("SELECT size FROM positions WHERE user_id = $1 AND symbol = $2 AND side = $3")
+                            .bind(user_id)
+                            .bind(&symbol)
+                            .bind(target_pos_side)
+                            .fetch_optional(&db_pool_clone)
+                            .await
+                        {
+                            Ok(res) => res,
+                            Err(e) => {
+                                tracing::error!("Failed to query positions for triggered reduce-only order {}: {:?}", order_id, e);
+                                let _ = sqlx::query("UPDATE orders SET status = 'FAILED', updated_at = NOW() WHERE id = $1")
+                                    .bind(order_id)
+                                    .execute(&db_pool_clone)
+                                    .await;
+                                return;
+                            }
+                        };
+
+                        let position_size = match pos_opt {
+                            Some(row) => row.get::<Decimal, _>("size"),
+                            None => Decimal::ZERO,
+                        };
+
+                        if position_size.is_zero() {
+                            tracing::warn!("Triggered reduce-only order {} rejected: no active opposite position found", order_id);
+                            let _ = sqlx::query("UPDATE orders SET status = 'REJECTED', updated_at = NOW() WHERE id = $1")
+                                .bind(order_id)
+                                .execute(&db_pool_clone)
+                                .await;
+                            return;
+                        }
+
+                        let open_orders_res = match sqlx::query("SELECT quantity FROM orders WHERE user_id = $1 AND symbol = $2 AND side = $3 AND status = 'OPEN' AND reduce_only = true")
+                            .bind(user_id)
+                            .bind(&symbol)
+                            .bind(&side)
+                            .fetch_all(&db_pool_clone)
+                            .await
+                        {
+                            Ok(res) => res,
+                            Err(e) => {
+                                tracing::error!("Failed to query open reduce-only orders for triggered order {}: {:?}", order_id, e);
+                                let _ = sqlx::query("UPDATE orders SET status = 'FAILED', updated_at = NOW() WHERE id = $1")
+                                    .bind(order_id)
+                                    .execute(&db_pool_clone)
+                                    .await;
+                                return;
+                            }
+                        };
+
+                        let existing_reduce_only_qty: Decimal = open_orders_res.iter()
+                            .map(|r| r.get::<Decimal, _>("quantity"))
+                            .sum();
+
+                        if existing_reduce_only_qty + quantity > position_size {
+                            tracing::warn!("Triggered reduce-only order {} rejected: quantity {} exceeds remaining position size {}", order_id, quantity, position_size - existing_reduce_only_qty);
+                            let _ = sqlx::query("UPDATE orders SET status = 'REJECTED', updated_at = NOW() WHERE id = $1")
+                                .bind(order_id)
+                                .execute(&db_pool_clone)
+                                .await;
+                            return;
+                        }
+                    }
 
                     let check_res = match risk_client_clone
                         .check_order_margin(
@@ -183,6 +250,7 @@ pub fn start_trigger_loop(
                         action: "PLACE".to_string(),
                         timestamp,
                         leverage: leverage as u32,
+                        reduce_only,
                     };
 
                     if let Err(publish_err) = order_producer_clone.publish_order(&kafka_event).await {

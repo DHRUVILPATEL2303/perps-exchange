@@ -39,6 +39,9 @@ impl GrpcTradingService for TradingGrpcService {
         let start_time = std::time::Instant::now();
         let req = request.into_inner();
 
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
         let market = match self.market_cache.get(&req.symbol).await {
             Some(m) => m,
             None => {
@@ -71,6 +74,44 @@ impl GrpcTradingService for TradingGrpcService {
             }));
         }
 
+        let new_qty = Decimal::from_str(&req.quantity)
+            .map_err(|e| Status::invalid_argument(format!("Invalid quantity: {}", e)))?;
+
+        if req.reduce_only {
+            let target_pos_side = if req.side == "BUY" { "SHORT" } else { "LONG" };
+            let positions = self.position_service.list_positions(user_id).await
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let active_pos = positions.iter().find(|p| p.symbol == req.symbol && p.side == target_pos_side && p.size > Decimal::ZERO);
+
+            if active_pos.is_none() {
+                return Ok(Response::new(PlaceOrderResponse {
+                    order_id: "".to_string(),
+                    status: "REJECTED".to_string(),
+                    error_message: Some("Reduce-only order requires an active open position on the opposite side".to_string()),
+                }));
+            }
+
+            let position_size = active_pos.unwrap().size;
+
+            let open_orders = self.order_repository.list_open_by_user(user_id).await
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let existing_reduce_only_qty: Decimal = open_orders.iter()
+                .filter(|o| o.symbol == req.symbol && o.side == req.side && o.reduce_only)
+                .map(|o| o.quantity)
+                .sum();
+
+            if existing_reduce_only_qty + new_qty > position_size {
+                return Ok(Response::new(PlaceOrderResponse {
+                    order_id: "".to_string(),
+                    status: "REJECTED".to_string(),
+                    error_message: Some(format!(
+                        "Reduce-only order quantity exceeds active position size. Position size: {}, Open reduce-only quantity: {}",
+                        position_size, existing_reduce_only_qty
+                    )),
+                }));
+            }
+        }
+
         let is_stop_order = req.order_type == "STOP_MARKET" || req.order_type == "STOP_LIMIT";
 
         let (trigger_price_val, trigger_direction) = if is_stop_order {
@@ -97,8 +138,6 @@ impl GrpcTradingService for TradingGrpcService {
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
 
         let order_id = Uuid::new_v4();
-        let user_id =
-            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         if is_stop_order {
             let order_entity = OrderEntity {
@@ -109,12 +148,12 @@ impl GrpcTradingService for TradingGrpcService {
                 order_type: req.order_type.clone(),
                 price: rust_decimal::Decimal::from_str(&price_str)
                     .unwrap_or(rust_decimal::Decimal::ZERO),
-                quantity: rust_decimal::Decimal::from_str(&req.quantity)
-                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                quantity: new_qty,
                 status: "PENDING_TRIGGER".to_string(),
                 leverage: req.leverage as i32,
                 trigger_price: trigger_price_val,
                 trigger_direction,
+                reduce_only: req.reduce_only,
             };
 
             self.order_repository
@@ -178,6 +217,7 @@ impl GrpcTradingService for TradingGrpcService {
             leverage: req.leverage as i32,
             trigger_price: None,
             trigger_direction: None,
+            reduce_only: req.reduce_only,
         };
 
         let db_start = std::time::Instant::now();
@@ -215,7 +255,7 @@ impl GrpcTradingService for TradingGrpcService {
 
         let kafka_event = KafkaOrderEvent {
             id: order_id,
-            user_id: Uuid::parse_str(&req.user_id).unwrap_or_default(),
+            user_id,
             symbol: req.symbol.clone(),
             side: req.side.clone(),
             order_type: req.order_type.clone(),
@@ -224,6 +264,7 @@ impl GrpcTradingService for TradingGrpcService {
             action: "PLACE".to_string(),
             timestamp,
             leverage: req.leverage,
+            reduce_only: req.reduce_only,
         };
 
         let kafka_start = std::time::Instant::now();
@@ -313,6 +354,7 @@ impl GrpcTradingService for TradingGrpcService {
             action: "CANCEL".to_string(),
             timestamp,
             leverage: 0,
+            reduce_only: false,
         };
 
         self.order_producer

@@ -35,6 +35,7 @@ pub struct IncomingOrder {
     pub action: String,
     pub timestamp: u64,
     pub leverage: u32,
+    pub reduce_only: bool,
     
     #[serde(skip)]
     pub local_received_timestamp: u64,

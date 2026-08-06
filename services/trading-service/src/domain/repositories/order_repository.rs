@@ -16,6 +16,7 @@ pub struct OrderEntity {
     pub leverage: i32,
     pub trigger_price: Option<Decimal>,
     pub trigger_direction: Option<String>,
+    pub reduce_only: bool,
 }
 
 #[async_trait]
