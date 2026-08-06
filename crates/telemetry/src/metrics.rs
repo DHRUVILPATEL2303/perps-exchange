@@ -137,6 +137,47 @@ pub static ORDER_CHANNEL_LATENCY_SECONDS: LazyLock<HistogramVec> = LazyLock::new
     REGISTRY.register(Box::new(histogram.clone())).unwrap();
     histogram
 });
+
+pub static KAFKA_POLL_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("kafka_poll_duration_seconds", "Time taken to execute a poll/fetch call in seconds")
+        .buckets(vec![
+            0.000010, 0.000050, 0.000100, 0.000500, 0.001, 0.005, 0.010, 0.050, 0.100, 0.500
+        ]);
+    let histogram = HistogramVec::new(opts, &["topic"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static KAFKA_MESSAGES_PER_POLL: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("kafka_messages_per_poll", "Number of messages returned in a single poll batch")
+        .buckets(vec![
+            1.0, 5.0, 10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0
+        ]);
+    let histogram = HistogramVec::new(opts, &["topic"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static ORDER_DESERIALIZE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("order_deserialize_duration_seconds", "Time taken to deserialize each order payload in seconds")
+        .buckets(vec![
+            0.0000001, 0.0000002, 0.0000005, 0.000001, 0.000005, 0.000010, 0.000050, 0.000100, 0.000500
+        ]);
+    let histogram = HistogramVec::new(opts, &["topic"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static PUBLISHING_ACK_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("publishing_ack_duration_seconds", "Time taken to publish and receive ack for events (trade/depth) in seconds")
+        .buckets(vec![
+            0.000010, 0.000050, 0.000100, 0.000500, 0.001, 0.005, 0.010, 0.050, 0.100
+        ]);
+    let histogram = HistogramVec::new(opts, &["target"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
 pub fn gather_metrics() -> String {
     let mut buffer = Vec::new();
     let encoder = TextEncoder::new();

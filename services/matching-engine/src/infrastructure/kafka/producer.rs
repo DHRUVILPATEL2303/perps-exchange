@@ -81,6 +81,7 @@ impl TradeProducer {
     }
 
     pub async fn publish_trade_sync(&self, trade: &Trade) -> Result<()> {
+        let start_ack = std::time::Instant::now();
         let payload = serde_json::to_string(trade)?;
         let key = trade.symbol.clone();
 
@@ -102,6 +103,11 @@ impl TradeProducer {
         let _: () = conn.publish(private_maker, payload.clone()).await?;
         let _: () = conn.publish(private_taker, payload).await?;
 
+        let elapsed = start_ack.elapsed().as_secs_f64();
+        telemetry::metrics::PUBLISHING_ACK_DURATION_SECONDS
+            .with_label_values(&["trade"])
+            .observe(elapsed);
+
         Ok(())
     }
 
@@ -111,6 +117,7 @@ impl TradeProducer {
         bids: Vec<(Decimal, Decimal)>,
         asks: Vec<(Decimal, Decimal)>,
     ) -> Result<()> {
+        let start_ack = std::time::Instant::now();
         let update = DepthUpdate {
             symbol: symbol.to_string(),
             bids,
@@ -122,6 +129,11 @@ impl TradeProducer {
         let channel = format!("orderbook:{}", symbol);
         let mut conn = self.redis_conn.clone();
         let _: () = conn.publish(channel, payload).await?;
+
+        let elapsed = start_ack.elapsed().as_secs_f64();
+        telemetry::metrics::PUBLISHING_ACK_DURATION_SECONDS
+            .with_label_values(&["depth"])
+            .observe(elapsed);
 
         Ok(())
     }

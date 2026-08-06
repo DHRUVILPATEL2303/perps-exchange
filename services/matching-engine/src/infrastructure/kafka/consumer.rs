@@ -4,7 +4,7 @@ use crate::domain::entities::trade::Trade;
 use crate::infrastructure::kafka::producer::TradeProducer;
 use anyhow::Result;
 use chrono::Utc;
-use futures_util::StreamExt;
+use futures_util::{StreamExt, FutureExt};
 use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
@@ -17,6 +17,7 @@ use std::time::Instant;
 use telemetry::metrics::{
     KAFKA_MESSAGES_CONSUMED_TOTAL, MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL,
     ORDER_MATCH_PURE_DURATION_SECONDS, ORDER_CANCEL_PURE_DURATION_SECONDS, ORDER_CHANNEL_LATENCY_SECONDS,
+    KAFKA_POLL_DURATION_SECONDS, KAFKA_MESSAGES_PER_POLL, ORDER_DESERIALIZE_DURATION_SECONDS,
 };
 use tokio::sync::mpsc;
 use tracing::{Instrument, info_span};
@@ -74,50 +75,80 @@ impl OrderConsumer {
 
         tracing::info!("Matching engine consuming from order-events...");
 
+        let mut start_poll = Instant::now();
+
         while let Some(msg_result) = stream.next().await {
-            match msg_result {
-                Err(e) => tracing::error!("Kafka error: {}", e),
-                Ok(msg) => {
-                    KAFKA_MESSAGES_CONSUMED_TOTAL
-                        .with_label_values(&["order-events"])
-                        .inc();
-                    if let Some(payload) = msg.payload() {
-                        match bincode::deserialize::<IncomingOrder>(payload) {
-                            Ok(mut incoming) => {
-                                let symbol = incoming.symbol.clone();
-                                incoming.local_received_timestamp = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_micros() as u64;
+            let poll_duration = start_poll.elapsed().as_secs_f64();
+            KAFKA_POLL_DURATION_SECONDS
+                .with_label_values(&["order-events"])
+                .observe(poll_duration);
 
-                                let tx = {
-                                    if let Some(tx) = router.get(&symbol) {
-                                        tx.clone()
-                                    } else {
-                                        let (tx, rx) = mpsc::channel(100_000); // Bounded channel to prevent OOM
-                                        router.insert(symbol.clone(), tx.clone());
+            let mut batch = vec![msg_result];
+            while let Some(Some(next_msg_result)) = stream.next().now_or_never() {
+                batch.push(next_msg_result);
+                if batch.len() >= 10000 {
+                    break;
+                }
+            }
 
-                                        let p = producer.clone();
-                                        tokio::spawn(symbol_worker(symbol.clone(), rx, p));
+            KAFKA_MESSAGES_PER_POLL
+                .with_label_values(&["order-events"])
+                .observe(batch.len() as f64);
 
-                                        tx
+            for msg_result in batch {
+                match msg_result {
+                    Err(e) => tracing::error!("Kafka error: {}", e),
+                    Ok(msg) => {
+                        KAFKA_MESSAGES_CONSUMED_TOTAL
+                            .with_label_values(&["order-events"])
+                            .inc();
+                        if let Some(payload) = msg.payload() {
+                            let start_deserialize = Instant::now();
+                            let deserialize_res = bincode::deserialize::<IncomingOrder>(payload);
+                            let deserialize_duration = start_deserialize.elapsed().as_secs_f64();
+                            ORDER_DESERIALIZE_DURATION_SECONDS
+                                .with_label_values(&["order-events"])
+                                .observe(deserialize_duration);
+
+                            match deserialize_res {
+                                Ok(mut incoming) => {
+                                    let symbol = incoming.symbol.clone();
+                                    incoming.local_received_timestamp = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_micros() as u64;
+
+                                    let tx = {
+                                        if let Some(tx) = router.get(&symbol) {
+                                            tx.clone()
+                                        } else {
+                                            let (tx, rx) = mpsc::channel(100_000); // Bounded channel to prevent OOM
+                                            router.insert(symbol.clone(), tx.clone());
+
+                                            let p = producer.clone();
+                                            tokio::spawn(symbol_worker(symbol.clone(), rx, p));
+
+                                            tx
+                                        }
+                                    };
+
+                                    if let Err(e) = tx.send(incoming).await {
+                                        tracing::error!(
+                                            "Failed to route order to symbol worker: {}",
+                                            e
+                                        );
                                     }
-                                };
-
-                                if let Err(e) = tx.send(incoming).await {
-                                    tracing::error!(
-                                        "Failed to route order to symbol worker: {}",
-                                        e
-                                    );
                                 }
-                            }
-                            Err(e) => {
-                                tracing::error!("Failed to deserialize incoming order: {}", e)
+                                Err(e) => {
+                                    tracing::error!("Failed to deserialize incoming order: {}", e)
+                                }
                             }
                         }
                     }
                 }
             }
+
+            start_poll = Instant::now();
         }
     }
 }
