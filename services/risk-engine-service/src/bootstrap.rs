@@ -54,6 +54,7 @@ pub async fn bootstrap(price_tracker: PriceTracker) -> Result<(
     let grpc_service = RiskGrpcService {
         account_client: account_client.clone(),
         db_pool: db.pool().clone(),
+        price_tracker: price_tracker.clone(),
     };
 
     let grpc_server = Server::builder()

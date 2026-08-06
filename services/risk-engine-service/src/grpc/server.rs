@@ -7,11 +7,13 @@ use proto::risk::{
     risk_service_server::RiskService as GrpcRiskService,
     CheckOrderMarginRequest, CheckOrderMarginResponse,
 };
+use crate::price_tracker::price_tracker::PriceTracker;
 use crate::infrastructure::grpc::account_client::AccountGrpcClient;
 
 pub struct RiskGrpcService {
     pub account_client: AccountGrpcClient,
     pub db_pool: Pool<Postgres>,
+    pub price_tracker: PriceTracker,
 }
 
 #[tonic::async_trait]
@@ -62,7 +64,40 @@ impl GrpcRiskService for RiskGrpcService {
         let avail_bal = Decimal::from_str(&balance_res.available_balance)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        if avail_bal >= required_margin {
+        let mut total_unrealized_pnl = Decimal::ZERO;
+        let active_positions = sqlx::query(
+            "SELECT symbol, side, size, entry_price FROM positions WHERE user_id = $1 AND size > 0"
+        )
+        .bind(user_id)
+        .fetch_all(&self.db_pool)
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
+
+        let (current_mark_price_opt, _) = self.price_tracker.get_prices();
+
+        for pos in active_positions {
+            let symbol: String = pos.get("symbol");
+            let side: String = pos.get("side");
+            let size: Decimal = pos.get("size");
+            let entry_price: Decimal = pos.get("entry_price");
+
+            let mark_price = if symbol == "BTCUSDT" {
+                current_mark_price_opt.unwrap_or(entry_price)
+            } else {
+                entry_price
+            };
+
+            let u_pnl = if side == "LONG" {
+                size * (mark_price - entry_price)
+            } else {
+                size * (entry_price - mark_price)
+            };
+            total_unrealized_pnl += u_pnl;
+        }
+
+        let adjusted_avail_bal = avail_bal + total_unrealized_pnl;
+
+        if adjusted_avail_bal >= required_margin {
             Ok(Response::new(CheckOrderMarginResponse {
                 approved: true,
                 required_margin: required_margin.to_string(),
@@ -72,7 +107,10 @@ impl GrpcRiskService for RiskGrpcService {
             Ok(Response::new(CheckOrderMarginResponse {
                 approved: false,
                 required_margin: required_margin.to_string(),
-                rejection_reason: Some("Insufficient available margin".to_string()),
+                rejection_reason: Some(format!(
+                    "Insufficient available margin (Available: {}, Unrealized PnL: {}, Adjusted: {})",
+                    avail_bal, total_unrealized_pnl, adjusted_avail_bal
+                )),
             }))
         }
     }
