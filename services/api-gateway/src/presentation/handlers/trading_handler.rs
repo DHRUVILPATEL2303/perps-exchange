@@ -107,3 +107,29 @@ pub async fn get_trade_history(state: Data<AppState>, path: Path<Uuid>) -> HttpR
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
+
+#[derive(Deserialize)]
+pub struct HTTPAdjustPositionMarginRequest {
+    pub user_id: Uuid,
+    pub symbol: String,
+    pub side: String,
+    pub amount: String,
+    pub is_add: bool,
+}
+
+pub async fn adjust_position_margin(state: Data<AppState>, body: Json<HTTPAdjustPositionMarginRequest>) -> HttpResponse {
+    let req = body.into_inner();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
+    let grpc_req = proto::trading::AdjustPositionMarginRequest {
+        user_id: req.user_id.to_string(),
+        symbol: req.symbol,
+        side: req.side,
+        amount: req.amount,
+        is_add: req.is_add,
+    };
+    match client.adjust_position_margin(grpc_req).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner()),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}

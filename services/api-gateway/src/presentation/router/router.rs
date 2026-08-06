@@ -1,7 +1,7 @@
 use crate::presentation::handlers::{
     account_handler::{get_balance, deposit_funds, withdraw_funds, get_transaction_history},
     market_handler::{list_markets, get_candles, create_market},
-    trading_handler::{cancel_order, get_positions, place_order, get_open_orders, get_trade_history},
+    trading_handler::{cancel_order, get_positions, place_order, get_open_orders, get_trade_history, adjust_position_margin},
     ws_handler::ws_index,
 };
 use crate::presentation::routes::health::health_routes;
@@ -18,6 +18,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/accounts/withdraw", web::post().to(withdraw_funds))
             .route("/accounts/{user_id}/transactions", web::get().to(get_transaction_history))
             .route("/positions/{user_id}", web::get().to(get_positions))
+            .route("/positions/adjust-margin", web::post().to(adjust_position_margin))
             .route("/orders", web::post().to(place_order))
             .route("/orders/cancel", web::post().to(cancel_order))
             .route("/orders/open/{user_id}", web::get().to(get_open_orders))

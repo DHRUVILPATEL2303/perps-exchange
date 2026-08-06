@@ -18,4 +18,13 @@ pub trait PositionUseCase: Send + Sync {
         leverage: i32,
         order_id: Uuid,
     ) -> Result<Position, ServiceError>;
+
+    async fn adjust_isolated_margin(
+        &self,
+        user_id: Uuid,
+        symbol: &str,
+        side: &str,
+        amount: Decimal,
+        is_add: bool,
+    ) -> Result<Position, ServiceError>;
 }

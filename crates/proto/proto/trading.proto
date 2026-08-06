@@ -8,6 +8,7 @@ service TradingService {
     rpc GetPostions(GetPostionsRequest) returns (GetPositionsResponse);
     rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
     rpc GetTradeHistory(GetTradeHistoryRequest) returns (GetTradeHistoryResponse);
+    rpc AdjustPositionMargin(AdjustPositionMarginRequest) returns (AdjustPositionMarginResponse);
 }
 
 message PlaceOrderRequest {
@@ -89,4 +90,17 @@ message TradeInfo {
     string quantity = 6;
     string fee = 7;
     string executed_at = 8;
+}
+
+message AdjustPositionMarginRequest {
+    string user_id = 1;
+    string symbol = 2;
+    string side = 3;
+    string amount = 4;
+    bool is_add = 5;
+}
+message AdjustPositionMarginResponse {
+    bool success = 1;
+    string new_margin = 2;
+    string new_liquidation_price = 3;
 }

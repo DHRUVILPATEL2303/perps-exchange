@@ -245,4 +245,76 @@ impl PositionUseCase for PositionService {
             Ok(created)
         }
     }
+
+    async fn adjust_isolated_margin(
+        &self,
+        user_id: Uuid,
+        symbol: &str,
+        side: &str,
+        amount: Decimal,
+        is_add: bool,
+    ) -> Result<Position, ServiceError> {
+        let mut position = match self.repository.find_by_user_symbol_side(user_id, symbol, side).await? {
+            Some(pos) => pos,
+            None => return Err(ServiceError::NotFound),
+        };
+
+        if position.margin_mode != "ISOLATED" {
+            return Err(ServiceError::Validation("Position is not in ISOLATED margin mode".to_string()));
+        }
+
+        if amount <= Decimal::ZERO {
+            return Err(ServiceError::Validation("Adjustment amount must be positive".to_string()));
+        }
+
+        if is_add {
+            let res = self.account_client.lock_margin(
+                user_id.to_string(),
+                amount.to_string(),
+                position.id.to_string(),
+            ).await.map_err(|e| ServiceError::Validation(e.to_string()))?;
+
+            if !res.success {
+                return Err(ServiceError::Validation(res.error_message));
+            }
+
+            position.margin += amount;
+        } else {
+            let mmr_rate = Decimal::new(5, 3); // 0.005
+            let mmr_amount = position.size * position.entry_price * mmr_rate;
+            let remaining_margin = position.margin - amount;
+            
+            if remaining_margin <= Decimal::ZERO {
+                return Err(ServiceError::Validation("Cannot reduce margin below zero".to_string()));
+            }
+
+            let cushion = remaining_margin + position.unrealized_pnl;
+            if cushion < mmr_amount {
+                return Err(ServiceError::Validation("Reducing margin would trigger immediate liquidation".to_string()));
+            }
+
+            let res = self.account_client.release_margin(
+                user_id.to_string(),
+                amount.to_string(),
+                position.id.to_string(),
+            ).await.map_err(|e| ServiceError::Validation(e.to_string()))?;
+
+            if !res.success {
+                return Err(ServiceError::Validation("Failed to release margin".to_string()));
+            }
+
+            position.margin -= amount;
+        }
+
+        position.liquidation_price = self.calculate_liq_price(
+            position.entry_price,
+            position.margin,
+            position.size,
+            &position.side,
+        );
+        position.updated_at = Utc::now();
+
+        let updated = self.repository.update(position).await?;
+        Ok(updated)
+    }
 }

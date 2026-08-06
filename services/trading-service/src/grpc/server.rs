@@ -1,10 +1,10 @@
 use crate::{
     application::usecase::position_usecase::PositionUseCase,
+    domain::price_tracker::PriceTracker,
     domain::repositories::{
         order_repository::{OrderEntity, OrderRepository},
         trade_repository::TradeRepository,
     },
-    domain::price_tracker::PriceTracker,
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, risk_client::RiskGrpcClient},
@@ -12,17 +12,18 @@ use crate::{
     },
 };
 use proto::trading::{
-    CancelOrderRequest, CancelOrderResponse, GetOpenOrdersRequest, GetOpenOrdersResponse,
-    GetPositionsResponse, GetPostionsRequest, OrderInfo, PlaceOrderRequest, PlaceOrderResponse,
-    PositionInfo, trading_service_server::TradingService as GrpcTradingService,
-    GetTradeHistoryRequest, GetTradeHistoryResponse, TradeInfo,
+    AdjustPositionMarginRequest, AdjustPositionMarginResponse, CancelOrderRequest,
+    CancelOrderResponse, GetOpenOrdersRequest, GetOpenOrdersResponse, GetPositionsResponse,
+    GetPostionsRequest, GetTradeHistoryRequest, GetTradeHistoryResponse, OrderInfo,
+    PlaceOrderRequest, PlaceOrderResponse, PositionInfo, TradeInfo,
+    trading_service_server::TradingService as GrpcTradingService,
 };
+use rust_decimal::Decimal;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
-use rust_decimal::Decimal;
 
 pub struct TradingGrpcService {
     pub position_service: Arc<dyn PositionUseCase>,
@@ -74,7 +75,8 @@ impl GrpcTradingService for TradingGrpcService {
                 order_id: "".to_string(),
                 status: "REJECTED".to_string(),
                 error_message: Some(
-                    "Leverage must be strictly less than 200 to avoid instant liquidation".to_string(),
+                    "Leverage must be strictly less than 200 to avoid instant liquidation"
+                        .to_string(),
                 ),
             }));
         }
@@ -84,23 +86,35 @@ impl GrpcTradingService for TradingGrpcService {
 
         if req.reduce_only {
             let target_pos_side = if req.side == "BUY" { "SHORT" } else { "LONG" };
-            let positions = self.position_service.list_positions(user_id).await
+            let positions = self
+                .position_service
+                .list_positions(user_id)
+                .await
                 .map_err(|e| Status::internal(e.to_string()))?;
-            let active_pos = positions.iter().find(|p| p.symbol == req.symbol && p.side == target_pos_side && p.size > Decimal::ZERO);
+            let active_pos = positions.iter().find(|p| {
+                p.symbol == req.symbol && p.side == target_pos_side && p.size > Decimal::ZERO
+            });
 
             if active_pos.is_none() {
                 return Ok(Response::new(PlaceOrderResponse {
                     order_id: "".to_string(),
                     status: "REJECTED".to_string(),
-                    error_message: Some("Reduce-only order requires an active open position on the opposite side".to_string()),
+                    error_message: Some(
+                        "Reduce-only order requires an active open position on the opposite side"
+                            .to_string(),
+                    ),
                 }));
             }
 
             let position_size = active_pos.unwrap().size;
 
-            let open_orders = self.order_repository.list_open_by_user(user_id).await
+            let open_orders = self
+                .order_repository
+                .list_open_by_user(user_id)
+                .await
                 .map_err(|e| Status::internal(e.to_string()))?;
-            let existing_reduce_only_qty: Decimal = open_orders.iter()
+            let existing_reduce_only_qty: Decimal = open_orders
+                .iter()
                 .filter(|o| o.symbol == req.symbol && o.side == req.side && o.reduce_only)
                 .map(|o| o.quantity)
                 .sum();
@@ -124,12 +138,18 @@ impl GrpcTradingService for TradingGrpcService {
                 return Ok(Response::new(PlaceOrderResponse {
                     order_id: "".to_string(),
                     status: "REJECTED".to_string(),
-                    error_message: Some("Trigger price is required for StopMarket and StopLimit orders".to_string()),
+                    error_message: Some(
+                        "Trigger price is required for StopMarket and StopLimit orders".to_string(),
+                    ),
                 }));
             }
             let tp_val = Decimal::from_str(req.trigger_price.as_ref().unwrap())
                 .map_err(|e| Status::invalid_argument(format!("Invalid trigger_price: {}", e)))?;
-            let current_price = self.price_tracker.get_price(&req.symbol).await.unwrap_or(tp_val);
+            let current_price = self
+                .price_tracker
+                .get_price(&req.symbol)
+                .await
+                .unwrap_or(tp_val);
             let dir = if tp_val > current_price {
                 "ABOVE".to_string()
             } else {
@@ -470,5 +490,29 @@ impl GrpcTradingService for TradingGrpcService {
             .collect();
 
         Ok(Response::new(GetTradeHistoryResponse { trades: pb_trades }))
+    }
+
+    async fn adjust_position_margin(
+        &self,
+        request: Request<AdjustPositionMarginRequest>,
+    ) -> Result<Response<AdjustPositionMarginResponse>, Status> {
+        let req = request.into_inner();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let amount =
+            Decimal::from_str(&req.amount).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        match self
+            .position_service
+            .adjust_isolated_margin(user_id, &req.symbol, &req.side, amount, req.is_add)
+            .await
+        {
+            Ok(pos) => Ok(Response::new(AdjustPositionMarginResponse {
+                success: true,
+                new_margin: pos.margin.to_string(),
+                new_liquidation_price: pos.liquidation_price.to_string(),
+            })),
+            Err(e) => Err(Status::internal(e.to_string())),
+        }
     }
 }
