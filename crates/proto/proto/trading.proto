@@ -7,6 +7,7 @@ service TradingService {
     rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
     rpc GetPostions(GetPostionsRequest) returns (GetPositionsResponse);
     rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
+    rpc GetTradeHistory(GetTradeHistoryRequest) returns (GetTradeHistoryResponse);
 }
 
 message PlaceOrderRequest {
@@ -71,4 +72,21 @@ message OrderInfo {
     string price = 5;
     string quantity = 6;
     string status = 7;
+}
+
+message GetTradeHistoryRequest {
+    string user_id = 1;
+}
+message GetTradeHistoryResponse {
+    repeated TradeInfo trades = 1;
+}
+message TradeInfo {
+    string id = 1;
+    string order_id = 2;
+    string symbol = 3;
+    string side = 4;
+    string price = 5;
+    string quantity = 6;
+    string fee = 7;
+    string executed_at = 8;
 }

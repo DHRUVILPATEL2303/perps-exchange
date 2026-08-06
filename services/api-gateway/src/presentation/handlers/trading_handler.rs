@@ -94,3 +94,16 @@ pub async fn get_open_orders(state: Data<AppState>, path: Path<Uuid>) -> HttpRes
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
+
+pub async fn get_trade_history(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
+    let user_id = path.into_inner();
+    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let mut client = state.trading_clients[idx].clone();
+    let grpc_req = proto::trading::GetTradeHistoryRequest {
+        user_id: user_id.to_string(),
+    };
+    match client.get_trade_history(grpc_req).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner().trades),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}

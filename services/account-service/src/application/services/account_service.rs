@@ -79,4 +79,9 @@ impl AccountUseCase for AccountService {
             .await?;
         Ok(updated)
     }
+
+    async fn get_transaction_history(&self, user_id: Uuid) -> Result<Vec<crate::domain::entities::transaction::Transaction>, ServiceError> {
+        let txs = self.repository.list_transactions_by_user(user_id).await?;
+        Ok(txs)
+    }
 }

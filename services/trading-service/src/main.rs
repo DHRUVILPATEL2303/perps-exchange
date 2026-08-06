@@ -10,7 +10,7 @@ pub mod state;
 #[tokio::main]
 async fn main() -> Result<()> {
     telemetry::logging::init();
-    
+
     let (state, grpc_server, trade_consumer, liquidation_consumer) = bootstrap::bootstrap().await?;
     telemetry::http::spawn_metrics_server(state.config.server.port);
 

@@ -1,9 +1,10 @@
+use crate::domain::entities::account::Account;
+use crate::domain::entities::transaction::Transaction;
+use crate::domain::repositories::account_repository::AccountRepository;
 use async_trait::async_trait;
 use errors::app_error::RepositoryError;
 use sqlx::{Pool, Postgres};
 use uuid::Uuid;
-use crate::domain::entities::account::Account;
-use crate::domain::repositories::account_repository::AccountRepository;
 
 pub struct PostgresAccountRepository {
     pool: Pool<Postgres>,
@@ -38,7 +39,11 @@ impl AccountRepository for PostgresAccountRepository {
         Ok(created)
     }
 
-    async fn find_by_user_and_asset(&self, user_id: Uuid, asset: &str) -> Result<Option<Account>, RepositoryError> {
+    async fn find_by_user_and_asset(
+        &self,
+        user_id: Uuid,
+        asset: &str,
+    ) -> Result<Option<Account>, RepositoryError> {
         let account = sqlx::query_as::<_, Account>(
             r#"
             SELECT id, user_id, asset, balance, frozen, created_at, updated_at
@@ -87,8 +92,13 @@ impl AccountRepository for PostgresAccountRepository {
 
         Ok(accounts)
     }
-    
-    async fn lock_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(), RepositoryError> {
+
+    async fn lock_margin_atomic(
+        &self,
+        user_id: Uuid,
+        asset: &str,
+        amount: rust_decimal::Decimal,
+    ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
         let account = sqlx::query_as::<_, Account>(
@@ -115,7 +125,9 @@ impl AccountRepository for PostgresAccountRepository {
         let available = account.balance - account.frozen;
         if available < amount {
             tx.rollback().await?;
-            return Err(RepositoryError::Database(sqlx::Error::Protocol("Insufficient balance".into())));
+            return Err(RepositoryError::Database(sqlx::Error::Protocol(
+                "Insufficient balance".into(),
+            )));
         }
 
         sqlx::query(
@@ -134,10 +146,14 @@ impl AccountRepository for PostgresAccountRepository {
         Ok(())
     }
 
-    async fn release_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(), RepositoryError> {
+    async fn release_margin_atomic(
+        &self,
+        user_id: Uuid,
+        asset: &str,
+        amount: rust_decimal::Decimal,
+    ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        
         let account = sqlx::query_as::<_, Account>(
             r#"
             SELECT id, user_id, asset, balance, frozen, created_at, updated_at
@@ -190,7 +206,6 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<Account, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-    
         let account = sqlx::query_as::<_, Account>(
             r#"
             SELECT id, user_id, asset, balance, frozen, created_at, updated_at
@@ -234,20 +249,45 @@ impl AccountRepository for PostgresAccountRepository {
                 let available = account.balance - account.frozen;
                 if available < amount {
                     tx.rollback().await?;
-                    return Err(RepositoryError::Database(sqlx::Error::Protocol("Insufficient balance".into())));
+                    return Err(RepositoryError::Database(sqlx::Error::Protocol(
+                        "Insufficient balance".into(),
+                    )));
                 }
                 account.balance -= amount;
             }
-            "PNL" | "FUNDING" | "BANKRUPTCY_CLEAR" | "INSURANCE_PAYOUT" | "INSURANCE_RESCUE" | "CLEARANCE_FEE" => {
+            "PNL" | "FUNDING" | "BANKRUPTCY_CLEAR" | "INSURANCE_PAYOUT" | "INSURANCE_RESCUE"
+            | "CLEARANCE_FEE" => {
                 account.balance += amount;
             }
             _ => {
                 tx.rollback().await?;
-                return Err(RepositoryError::Database(sqlx::Error::Protocol("Invalid adjustment type".into())));
+                return Err(RepositoryError::Database(sqlx::Error::Protocol(
+                    "Invalid adjustment type".into(),
+                )));
             }
         }
 
-    
+        if adjustment_type == "DEPOSIT" || adjustment_type == "WITHDRAW" {
+            let tx_type = if adjustment_type == "DEPOSIT" {
+                "DEPOSIT"
+            } else {
+                "WITHDRAWAL"
+            };
+            sqlx::query(
+                r#"
+                INSERT INTO transactions (id, user_id, asset, amount, transaction_type, status, tx_hash, created_at)
+                VALUES ($1, $2, $3, $4, $5, 'SUCCESS', NULL, NOW())
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(user_id)
+            .bind(asset)
+            .bind(amount)
+            .bind(tx_type)
+            .execute(&mut *tx)
+            .await?;
+        }
+
         let updated = sqlx::query_as::<_, Account>(
             r#"
             UPDATE accounts
@@ -265,4 +305,42 @@ impl AccountRepository for PostgresAccountRepository {
         Ok(updated)
     }
 
+    async fn create_transaction(&self, tx: Transaction) -> Result<Transaction, RepositoryError> {
+        let created = sqlx::query_as::<_, Transaction>(
+            r#"
+            INSERT INTO transactions (id, user_id, asset, amount, transaction_type, status, tx_hash, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, user_id, asset, amount, transaction_type, status, tx_hash, created_at
+            "#
+        )
+        .bind(tx.id)
+        .bind(tx.user_id)
+        .bind(tx.asset)
+        .bind(tx.amount)
+        .bind(tx.transaction_type)
+        .bind(tx.status)
+        .bind(tx.tx_hash)
+        .bind(tx.created_at)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(created)
+    }
+
+    async fn list_transactions_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, RepositoryError> {
+        let rows = sqlx::query_as::<_, Transaction>(
+            r#"
+            SELECT id, user_id, asset, amount, transaction_type, status, tx_hash, created_at
+            FROM transactions
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
 }

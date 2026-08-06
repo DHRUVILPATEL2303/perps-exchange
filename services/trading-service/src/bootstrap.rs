@@ -120,6 +120,7 @@ pub async fn bootstrap() -> Result<(
         risk_client: risk_client.clone(),
         order_producer: order_producer.clone(),
         order_repository: order_repository.clone(),
+        trade_repository: trade_repository.clone(),
         market_cache: market_cache.clone(),
         price_tracker: price_tracker.clone(),
     };

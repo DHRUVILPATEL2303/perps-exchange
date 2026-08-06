@@ -7,6 +7,7 @@ service AccountService {
   rpc LockMargin(LockMarginRequest) returns (LockMarginResponse);
   rpc ReleaseMargin(ReleaseMarginRequest) returns (ReleaseMarginResponse);
   rpc AdjustMargin(AdjustMarginRequest) returns (AdjustMarginResponse);
+  rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
 }
 
 message GetBalanceRequest {
@@ -45,4 +46,21 @@ message AdjustMarginRequest {
 }
 message AdjustMarginResponse {
   string new_balance = 1;
+}
+
+message GetTransactionHistoryRequest {
+  string user_id = 1;
+}
+message GetTransactionHistoryResponse {
+  repeated TransactionInfo transactions = 1;
+}
+message TransactionInfo {
+  string id = 1;
+  string user_id = 2;
+  string asset = 3;
+  string amount = 4;
+  string transaction_type = 5;
+  string status = 6;
+  string tx_hash = 7;
+  string created_at = 8;
 }

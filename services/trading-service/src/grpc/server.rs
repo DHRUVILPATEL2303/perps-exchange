@@ -1,6 +1,9 @@
 use crate::{
     application::usecase::position_usecase::PositionUseCase,
-    domain::repositories::order_repository::{OrderEntity, OrderRepository},
+    domain::repositories::{
+        order_repository::{OrderEntity, OrderRepository},
+        trade_repository::TradeRepository,
+    },
     domain::price_tracker::PriceTracker,
     infrastructure::{
         cache::market_cache::MarketCache,
@@ -12,6 +15,7 @@ use proto::trading::{
     CancelOrderRequest, CancelOrderResponse, GetOpenOrdersRequest, GetOpenOrdersResponse,
     GetPositionsResponse, GetPostionsRequest, OrderInfo, PlaceOrderRequest, PlaceOrderResponse,
     PositionInfo, trading_service_server::TradingService as GrpcTradingService,
+    GetTradeHistoryRequest, GetTradeHistoryResponse, TradeInfo,
 };
 use std::str::FromStr;
 use std::sync::Arc;
@@ -26,6 +30,7 @@ pub struct TradingGrpcService {
     pub risk_client: RiskGrpcClient,
     pub order_producer: Arc<OrderProducer>,
     pub order_repository: Arc<dyn OrderRepository>,
+    pub trade_repository: Arc<dyn TradeRepository>,
     pub market_cache: Arc<MarketCache>,
     pub price_tracker: PriceTracker,
 }
@@ -434,5 +439,36 @@ impl GrpcTradingService for TradingGrpcService {
             .collect();
 
         Ok(Response::new(GetOpenOrdersResponse { orders: pb_orders }))
+    }
+
+    async fn get_trade_history(
+        &self,
+        request: Request<GetTradeHistoryRequest>,
+    ) -> Result<Response<GetTradeHistoryResponse>, Status> {
+        let req = request.into_inner();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let trades = self
+            .trade_repository
+            .list_by_user(user_id)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let pb_trades = trades
+            .into_iter()
+            .map(|t| TradeInfo {
+                id: t.id.to_string(),
+                order_id: t.order_id.to_string(),
+                symbol: t.symbol,
+                side: t.side,
+                price: t.price.to_string(),
+                quantity: t.quantity.to_string(),
+                fee: t.fee.to_string(),
+                executed_at: t.executed_at.to_rfc3339(),
+            })
+            .collect();
+
+        Ok(Response::new(GetTradeHistoryResponse { trades: pb_trades }))
     }
 }
