@@ -92,7 +92,7 @@ pub async fn bootstrap() -> Result<(
     let order_producer = Arc::new(OrderProducer::new(&brokers)?);
 
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
-    let _trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
+    let trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
     let order_repository = Arc::new(PostgresOrderRepository::new(db.pool().clone()));
 
     let position_service = Arc::new(PositionService::new(
@@ -134,6 +134,7 @@ pub async fn bootstrap() -> Result<(
         "trading-service-group-v2",
         position_service.clone(),
         order_repository.clone(),
+        trade_repository.clone(),
     )?;
 
     let liquidation_consumer = LiquidationConsumer::new(
