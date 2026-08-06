@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     domain::{
         entities::position::Position,
-        repositories::position_repository::PositionRepository,
+        repositories::{position_repository::PositionRepository, order_repository::OrderRepository},
     },
     application::usecase::position_usecase::PositionUseCase,
     infrastructure::grpc::account_client::AccountGrpcClient,
@@ -17,16 +17,19 @@ use crate::{
 pub struct PositionService {
     repository: Arc<dyn PositionRepository>,
     account_client: AccountGrpcClient,
+    order_repository: Arc<dyn OrderRepository>,
 }
 
 impl PositionService {
     pub fn new(
         repository: Arc<dyn PositionRepository>,
         account_client: AccountGrpcClient,
+        order_repository: Arc<dyn OrderRepository>,
     ) -> Self {
         Self {
             repository,
             account_client,
+            order_repository,
         }
     }
 
@@ -76,6 +79,11 @@ impl PositionUseCase for PositionService {
     ) -> Result<Position, ServiceError> {
         let opposite_side = if trade_side == "BUY" { "SHORT" } else { "LONG" };
         let position_side = if trade_side == "BUY" { "LONG" } else { "SHORT" };
+
+        let mut margin_mode = "ISOLATED".to_string();
+        if let Ok(Some(order)) = self.order_repository.find_by_id(order_id).await {
+            margin_mode = order.margin_mode;
+        }
 
         let opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;
 
@@ -184,7 +192,7 @@ impl PositionUseCase for PositionService {
                             liquidation_price: liq_price,
                             unrealized_pnl: Decimal::ZERO,
                             realized_pnl: Decimal::ZERO,
-                            margin_mode: "ISOLATED".to_string(),
+                            margin_mode: margin_mode.clone(),
                             created_at: Utc::now(),
                             updated_at: Utc::now(),
                         };
@@ -228,7 +236,7 @@ impl PositionUseCase for PositionService {
                 liquidation_price: liq_price,
                 unrealized_pnl: Decimal::ZERO,
                 realized_pnl: Decimal::ZERO,
-                margin_mode: "ISOLATED".to_string(),
+                margin_mode: margin_mode.clone(),
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };

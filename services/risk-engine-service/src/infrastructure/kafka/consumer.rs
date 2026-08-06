@@ -12,6 +12,7 @@ use sqlx::{Pool, Postgres, Row};
 use uuid::Uuid;
 use crate::infrastructure::kafka::producer::{LiquidationEvent, LiquidationProducer};
 use crate::price_tracker::price_tracker::PriceTracker;
+use crate::infrastructure::grpc::account_client::AccountGrpcClient;
 
 #[derive(Deserialize)]
 pub struct PriceFeedTick {
@@ -25,6 +26,7 @@ pub struct RiskConsumer {
     db_pool: Pool<Postgres>,
     producer: Arc<LiquidationProducer>,
     price_tracker: PriceTracker,
+    account_client: AccountGrpcClient,
 }
 impl RiskConsumer {
     pub fn new(
@@ -33,6 +35,7 @@ impl RiskConsumer {
          db_pool: Pool<Postgres>,
          producer: Arc<LiquidationProducer>,
          price_tracker: PriceTracker,
+         account_client: AccountGrpcClient,
      ) -> Result<Self> {
          let consumer: StreamConsumer = ClientConfig::new()
              .set("bootstrap.servers", brokers)
@@ -46,6 +49,7 @@ impl RiskConsumer {
              db_pool,
              producer,
              price_tracker,
+             account_client,
          })
      }
 
@@ -95,6 +99,7 @@ impl RiskConsumer {
             let size: Decimal = row.get("size");
             let entry_price: Decimal = row.get("entry_price");
             let margin: Decimal = row.get("margin");
+            let margin_mode: String = row.get("margin_mode");
 
             let unrealized_pnl = if side == "LONG" {
                 size * (tick.mark_price - entry_price)
@@ -102,7 +107,15 @@ impl RiskConsumer {
                 size * (entry_price - tick.mark_price)
             };
 
-            let margin_balance = margin + unrealized_pnl;
+            let mut margin_balance = margin + unrealized_pnl;
+
+            if margin_mode == "CROSS" {
+                if let Ok(balance_res) = self.account_client.get_balance(user_id.to_string(), "USDT".to_string()).await {
+                    let avail_bal = Decimal::from_str(&balance_res.available_balance).unwrap_or(Decimal::ZERO);
+                    margin_balance += avail_bal;
+                }
+            }
+
             let maintenance_margin = size * tick.mark_price * mmr;
 
             if margin_balance < maintenance_margin {

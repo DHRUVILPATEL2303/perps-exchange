@@ -154,6 +154,7 @@ impl GrpcTradingService for TradingGrpcService {
                 trigger_price: trigger_price_val,
                 trigger_direction,
                 reduce_only: req.reduce_only,
+                margin_mode: req.margin_mode.clone(),
             };
 
             self.order_repository
@@ -218,6 +219,7 @@ impl GrpcTradingService for TradingGrpcService {
             trigger_price: None,
             trigger_direction: None,
             reduce_only: req.reduce_only,
+            margin_mode: req.margin_mode.clone(),
         };
 
         let db_start = std::time::Instant::now();

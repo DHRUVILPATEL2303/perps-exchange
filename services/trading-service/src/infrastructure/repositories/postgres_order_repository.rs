@@ -19,9 +19,9 @@ impl OrderRepository for PostgresOrderRepository {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity> {
         sqlx::query(
             r#"
-            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
-            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only
+            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, margin_mode, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, margin_mode
             "#,
         )
         .bind(order.id)
@@ -36,6 +36,7 @@ impl OrderRepository for PostgresOrderRepository {
         .bind(order.trigger_price)
         .bind(order.trigger_direction)
         .bind(order.reduce_only)
+        .bind(order.margin_mode)
         .fetch_one(&self.pool)
         .await
         .map(|row| OrderEntity {
@@ -51,6 +52,7 @@ impl OrderRepository for PostgresOrderRepository {
             trigger_price: row.get("trigger_price"),
             trigger_direction: row.get("trigger_direction"),
             reduce_only: row.get("reduce_only"),
+            margin_mode: row.get("margin_mode"),
         })
         .map_err(Into::into)
     }
@@ -68,7 +70,7 @@ impl OrderRepository for PostgresOrderRepository {
     async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only
+            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, margin_mode
             FROM orders
             WHERE user_id = $1 AND status = 'OPEN'
             "#,
@@ -92,9 +94,43 @@ impl OrderRepository for PostgresOrderRepository {
                 trigger_price: row.get("trigger_price"),
                 trigger_direction: row.get("trigger_direction"),
                 reduce_only: row.get("reduce_only"),
+                margin_mode: row.get("margin_mode"),
             })
             .collect();
 
         Ok(orders)
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<OrderEntity>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, margin_mode
+            FROM orders
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(r) = row {
+            Ok(Some(OrderEntity {
+                id: r.get("id"),
+                user_id: r.get("user_id"),
+                symbol: r.get("symbol"),
+                side: r.get("side"),
+                order_type: r.get("order_type"),
+                price: r.get("price"),
+                quantity: r.get("quantity"),
+                status: r.get("status"),
+                leverage: r.get("leverage"),
+                trigger_price: r.get("trigger_price"),
+                trigger_direction: r.get("trigger_direction"),
+                reduce_only: r.get("reduce_only"),
+                margin_mode: r.get("margin_mode"),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

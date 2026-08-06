@@ -98,6 +98,7 @@ pub async fn bootstrap() -> Result<(
     let position_service = Arc::new(PositionService::new(
         position_repository.clone(),
         account_client.clone(),
+        order_repository.clone(),
     ));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 

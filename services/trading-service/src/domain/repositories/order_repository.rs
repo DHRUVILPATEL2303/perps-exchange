@@ -17,6 +17,7 @@ pub struct OrderEntity {
     pub trigger_price: Option<Decimal>,
     pub trigger_direction: Option<String>,
     pub reduce_only: bool,
+    pub margin_mode: String,
 }
 
 #[async_trait]
@@ -24,4 +25,5 @@ pub trait OrderRepository: Send + Sync {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity>;
     async fn update_status(&self, id: Uuid, status: &str) -> Result<()>;
     async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<OrderEntity>>;
 }

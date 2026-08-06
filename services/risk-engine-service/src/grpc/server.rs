@@ -68,7 +68,7 @@ impl GrpcRiskService for RiskGrpcService {
 
         let mut total_unrealized_pnl = Decimal::ZERO;
         let active_positions = sqlx::query(
-            "SELECT symbol, side, size, entry_price FROM positions WHERE user_id = $1 AND size > 0",
+            "SELECT symbol, side, size, entry_price, margin_mode FROM positions WHERE user_id = $1 AND size > 0",
         )
         .bind(user_id)
         .fetch_all(&self.db_pool)
@@ -82,19 +82,22 @@ impl GrpcRiskService for RiskGrpcService {
             let side: String = pos.get("side");
             let size: Decimal = pos.get("size");
             let entry_price: Decimal = pos.get("entry_price");
+            let pos_margin_mode: String = pos.get("margin_mode");
 
-            let mark_price = if symbol == "BTCUSDT" {
-                current_mark_price_opt.unwrap_or(entry_price)
-            } else {
-                entry_price
-            };
+            if pos_margin_mode == "CROSS" {
+                let mark_price = if symbol == "BTCUSDT" {
+                    current_mark_price_opt.unwrap_or(entry_price)
+                } else {
+                    entry_price
+                };
 
-            let u_pnl = if side == "LONG" {
-                size * (mark_price - entry_price)
-            } else {
-                size * (entry_price - mark_price)
-            };
-            total_unrealized_pnl += u_pnl;
+                let u_pnl = if side == "LONG" {
+                    size * (mark_price - entry_price)
+                } else {
+                    size * (entry_price - mark_price)
+                };
+                total_unrealized_pnl += u_pnl;
+            }
         }
 
         let adjusted_avail_bal = avail_bal + total_unrealized_pnl;

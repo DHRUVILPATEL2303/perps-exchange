@@ -70,6 +70,7 @@ pub async fn bootstrap(price_tracker: PriceTracker) -> Result<(
         db.pool().clone(),
         producer,
         price_tracker.clone(),
+        account_client.clone(),
     )?;
 
     let position_repository = Arc::new(PositionRepository::new(db.pool().clone()));
