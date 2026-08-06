@@ -108,6 +108,7 @@ pub async fn bootstrap() -> Result<(
         risk_client: risk_client.clone(),
         order_producer: order_producer.clone(),
         order_repository: order_repository.clone(),
+        market_cache: market_cache.clone(),
     };
 
     let grpc_server = Server::builder()

@@ -2,6 +2,7 @@ use crate::{
     application::usecase::position_usecase::PositionUseCase,
     domain::repositories::order_repository::{OrderEntity, OrderRepository},
     infrastructure::{
+        cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, risk_client::RiskGrpcClient},
         kafka::producer::{KafkaOrderEvent, OrderProducer},
     },
@@ -23,6 +24,7 @@ pub struct TradingGrpcService {
     pub risk_client: RiskGrpcClient,
     pub order_producer: Arc<OrderProducer>,
     pub order_repository: Arc<dyn OrderRepository>,
+    pub market_cache: Arc<MarketCache>,
 }
 
 #[tonic::async_trait]
@@ -33,6 +35,29 @@ impl GrpcTradingService for TradingGrpcService {
     ) -> Result<Response<PlaceOrderResponse>, Status> {
         let start_time = std::time::Instant::now();
         let req = request.into_inner();
+
+        let market = match self.market_cache.get(&req.symbol).await {
+            Some(m) => m,
+            None => {
+                return Ok(Response::new(PlaceOrderResponse {
+                    order_id: "".to_string(),
+                    status: "REJECTED".to_string(),
+                    error_message: Some(format!("Market {} not found", req.symbol)),
+                }));
+            }
+        };
+
+        if req.leverage > market.max_leverage {
+            return Ok(Response::new(PlaceOrderResponse {
+                order_id: "".to_string(),
+                status: "REJECTED".to_string(),
+                error_message: Some(format!(
+                    "Requested leverage {} exceeds maximum allowed leverage of {} for symbol {}",
+                    req.leverage, market.max_leverage, req.symbol
+                )),
+            }));
+        }
+
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
 
         let risk_start = std::time::Instant::now();
