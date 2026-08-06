@@ -276,7 +276,8 @@
             <div class="panel panel-full chart-panel">
                 <h3 style="width: 100%;">
                     <span>Live 1m Candlestick Chart</span>
-                    <span style="font-size: 13px; font-weight: normal; color: #8e8e93;">Aggregating Real-Time Redis PubSub Ticks</span>
+                    <span style="font-size: 13px; font-weight: normal; color: #8e8e93;">Aggregating Real-Time Redis
+                        PubSub Ticks</span>
                 </h3>
                 <canvas id="candle-chart" width="1200" height="250"></canvas>
 
@@ -324,7 +325,7 @@
         function processStreamedMessage(rawText) {
             try {
                 const parsed = JSON.parse(rawText);
-                
+
                 // Check if it is a Candle update
                 if (parsed.timestamp && parsed.open && parsed.high && parsed.low && parsed.close) {
                     const candle = {
@@ -360,11 +361,11 @@
 
         function updateStatsCard(candle) {
             const valColor = candle.close >= candle.open ? "green" : "red";
-            
+
             document.getElementById("stat-open").innerText = candle.open.toFixed(2);
             document.getElementById("stat-high").innerText = candle.high.toFixed(2);
             document.getElementById("stat-low").innerText = candle.low.toFixed(2);
-            
+
             const closeEl = document.getElementById("stat-close");
             closeEl.innerText = candle.close.toFixed(2);
             closeEl.className = "value " + valColor;
@@ -373,7 +374,7 @@
         function drawChart() {
             const canvas = document.getElementById("candle-chart");
             const ctx = canvas.getContext("2d");
-            
+
             // Clear
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -389,7 +390,7 @@
             let minPrice = Math.min(...candlesList.map(c => c.low));
             let maxPrice = Math.max(...candlesList.map(c => c.high));
             let range = maxPrice - minPrice || 10;
-            
+
             // Add padding
             minPrice -= range * 0.15;
             maxPrice += range * 0.15;
@@ -423,7 +424,7 @@
             for (let i = 0; i < candlesList.length; i++) {
                 const c = candlesList[i];
                 const x = paddingLeft + i * candleWidth + candleWidth / 2;
-                
+
                 const yOpen = scaleY(c.open);
                 const yClose = scaleY(c.close);
                 const yHigh = scaleY(c.high);
@@ -431,7 +432,7 @@
 
                 const isGreen = c.close >= c.open;
                 const color = isGreen ? "#22c55e" : "#ef4444";
-                
+
                 ctx.strokeStyle = color;
                 ctx.fillStyle = color;
                 ctx.lineWidth = 2;
@@ -495,8 +496,8 @@
 
         // WT Connection
         async function connectWT() {
-            const hashBytes = new Uint8Array([133, 217, 119, 5, 200, 109, 95, 167, 137, 166, 83, 163, 64, 30, 102, 253, 137, 209, 67, 10, 245, 49, 36, 165, 187, 158, 125, 152, 52, 216, 3, 106]);
-            
+            const hashBytes = new Uint8Array([66, 169, 171, 117, 150, 9, 185, 152, 46, 141, 232, 17, 90, 35, 138, 141, 230, 71, 70, 71, 67, 19, 248, 168, 224, 235, 18, 143, 154, 166, 104, 221]);
+
             try {
                 wt = new WebTransport("https://127.0.0.1:4433/", {
                     serverCertificateHashes: [

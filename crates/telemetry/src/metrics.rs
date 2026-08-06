@@ -99,7 +99,40 @@ pub static TRADING_KAFKA_PUBLISH_DURATION_SECONDS: LazyLock<HistogramVec> = Lazy
 });
 
 pub static ORDER_TRANSIT_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
-    let opts = HistogramOpts::new("order_transit_duration_seconds", "Time taken for order to transit from trading-service to matching-engine via Kafka in seconds");
+    let opts = HistogramOpts::new("order_transit_duration_seconds", "Time taken for order to transit from trading-service to matching-engine via Kafka in seconds")
+        .buckets(vec![
+            0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0
+        ]);
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static ORDER_MATCH_PURE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("order_match_pure_duration_seconds", "Time taken for pure order book match execution in seconds")
+        .buckets(vec![
+            0.0000001, 0.0000002, 0.0000005, 0.000001, 0.000005, 0.000010, 0.000050, 0.000100, 0.000500, 0.001, 0.005, 0.010
+        ]);
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static ORDER_CANCEL_PURE_DURATION_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("order_cancel_pure_duration_seconds", "Time taken for pure order book cancel execution in seconds")
+        .buckets(vec![
+            0.0000001, 0.0000002, 0.0000005, 0.000001, 0.000005, 0.000010, 0.000050, 0.000100, 0.000500, 0.001, 0.005, 0.010
+        ]);
+    let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
+    REGISTRY.register(Box::new(histogram.clone())).unwrap();
+    histogram
+});
+
+pub static ORDER_CHANNEL_LATENCY_SECONDS: LazyLock<HistogramVec> = LazyLock::new(|| {
+    let opts = HistogramOpts::new("order_channel_latency_seconds", "Time spent waiting in the worker queue in seconds")
+        .buckets(vec![
+            0.0000001, 0.0000002, 0.0000005, 0.000001, 0.000005, 0.000010, 0.000050, 0.000100, 0.000500, 0.001, 0.005, 0.010
+        ]);
     let histogram = HistogramVec::new(opts, &["symbol"]).unwrap();
     REGISTRY.register(Box::new(histogram.clone())).unwrap();
     histogram

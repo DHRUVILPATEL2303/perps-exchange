@@ -1,4 +1,4 @@
-use sqlx::{PgPool, postgres::PgPoolOptions, postgres::PgConnectOptions};
+use sqlx::{PgPool, postgres::PgConnectOptions, postgres::PgPoolOptions};
 use std::str::FromStr;
 
 pub async fn create_pool(config: &config::DatabaseConfig) -> Result<PgPool, sqlx::Error> {

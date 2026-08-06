@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use telemetry::metrics::{
     KAFKA_MESSAGES_CONSUMED_TOTAL, MATCHING_DURATION_SECONDS, ORDERS_PROCESSED_TOTAL,
+    ORDER_MATCH_PURE_DURATION_SECONDS, ORDER_CANCEL_PURE_DURATION_SECONDS, ORDER_CHANNEL_LATENCY_SECONDS,
 };
 use tokio::sync::mpsc;
 use tracing::{Instrument, info_span};
@@ -32,6 +33,9 @@ pub struct IncomingOrder {
     pub quantity: String,
     pub action: String,
     pub timestamp: u64,
+    
+    #[serde(skip)]
+    pub local_received_timestamp: u64,
 }
 
 pub struct OrderConsumer {
@@ -50,6 +54,7 @@ impl OrderConsumer {
             .set("receive.message.max.bytes", "104857600")
             .set("queued.max.messages.kbytes", "1048576")
             .set("fetch.wait.max.ms", "500")
+            .set("max.poll.interval.ms", "900000")
             .set("debug", "consumer,cgrp,topic")
             .set_log_level(RDKafkaLogLevel::Debug)
             .create()?;
@@ -78,8 +83,12 @@ impl OrderConsumer {
                         .inc();
                     if let Some(payload) = msg.payload() {
                         match bincode::deserialize::<IncomingOrder>(payload) {
-                            Ok(incoming) => {
+                            Ok(mut incoming) => {
                                 let symbol = incoming.symbol.clone();
+                                incoming.local_received_timestamp = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_micros() as u64;
 
                                 let tx = {
                                     if let Some(tx) = router.get(&symbol) {
@@ -121,6 +130,9 @@ async fn symbol_worker(
     tracing::info!("Started dedicated matching worker for {}", symbol);
     let mut book = OrderBook::new(symbol.clone());
     let mut depth_interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+    depth_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    let mut order_count = 0u64;
 
     let (trade_tx, mut trade_rx) = mpsc::channel(100_000);
     let p_trades = producer.clone();
@@ -151,6 +163,11 @@ async fn symbol_worker(
                     None => break, // Channel closed, exit worker
                 };
 
+                order_count += 1;
+                if order_count % 1000 == 0 {
+                    tokio::task::yield_now().await;
+                }
+
                 let start_time = Instant::now();
 
                 if incoming.timestamp > 0 {
@@ -167,6 +184,17 @@ async fn symbol_worker(
                     }
                 }
 
+                let now_us = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_micros() as u64;
+                if incoming.local_received_timestamp > 0 && now_us >= incoming.local_received_timestamp {
+                    let channel_latency = (now_us - incoming.local_received_timestamp) as f64 / 1_000_000.0;
+                    ORDER_CHANNEL_LATENCY_SECONDS
+                        .with_label_values(&[&symbol])
+                        .observe(channel_latency);
+                }
+
 
 
         let order_id = incoming.id;
@@ -179,7 +207,14 @@ async fn symbol_worker(
         };
 
         if incoming.action == "CANCEL" {
-            if let Some((price, qty)) = book.cancel_order(order_id, &side) {
+            let start_cancel = Instant::now();
+            let cancel_res = book.cancel_order(order_id, &side);
+            let cancel_duration = start_cancel.elapsed().as_secs_f64();
+            ORDER_CANCEL_PURE_DURATION_SECONDS
+                .with_label_values(&[&symbol])
+                .observe(cancel_duration);
+
+            if let Some((price, qty)) = cancel_res {
                 let cancel_trade = Trade {
                     id: Uuid::new_v4(),
                     symbol: symbol.clone(),
@@ -206,7 +241,6 @@ async fn symbol_worker(
             let taker = BookOrder {
                 id: order_id,
                 user_id: user_id,
-                symbol: symbol.clone(),
                 side: match side {
                     OrderSide::Buy => OrderSide::Buy,
                     OrderSide::Sell => OrderSide::Sell,
@@ -223,7 +257,13 @@ async fn symbol_worker(
                 created_at: Utc::now(),
             };
 
+            let start_match = Instant::now();
             let trades = book.match_order(taker);
+            let match_duration = start_match.elapsed().as_secs_f64();
+            ORDER_MATCH_PURE_DURATION_SECONDS
+                .with_label_values(&[&symbol])
+                .observe(match_duration);
+
             for trade in trades {
                 let _ = trade_tx.try_send(trade);
             }

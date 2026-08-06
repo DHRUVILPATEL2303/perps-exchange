@@ -27,7 +27,6 @@ pub enum OrderStatus {
 pub struct BookOrder {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub symbol: String,
     pub side: OrderSide,
     pub order_type: OrderType,
     pub price: Decimal,

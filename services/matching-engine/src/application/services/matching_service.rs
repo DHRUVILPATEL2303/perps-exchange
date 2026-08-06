@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use chrono::Utc;
 use rust_decimal::Decimal;
 use uuid::Uuid;
+use rustc_hash::FxHashMap;
 use crate::domain::entities::order::{BookOrder, OrderSide, OrderStatus, OrderType};
 use crate::domain::entities::trade::Trade;
 
@@ -9,6 +10,7 @@ pub struct OrderBook {
     pub symbol: String,
     pub bids: BTreeMap<Decimal, VecDeque<BookOrder>>,
     pub asks: BTreeMap<Decimal, VecDeque<BookOrder>>,
+    pub orders: FxHashMap<Uuid, (Decimal, OrderSide)>,
 }
 
 impl OrderBook {
@@ -17,10 +19,12 @@ impl OrderBook {
             symbol,
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
+            orders: FxHashMap::default(),
         }
     }
 
     pub fn add_order(&mut self, order: BookOrder) {
+        self.orders.insert(order.id, (order.price, order.side.clone()));
         let book_side = match order.side {
             OrderSide::Buy => &mut self.bids,
             OrderSide::Sell => &mut self.asks,
@@ -86,7 +90,7 @@ impl OrderBook {
 
             let trade = Trade {
                 id: Uuid::new_v4(),
-                symbol: taker.symbol.clone(),
+                symbol: self.symbol.clone(),
                 maker_order_id: maker.id,
                 taker_order_id: taker.id,
                 maker_user_id: maker.user_id,
@@ -103,6 +107,7 @@ impl OrderBook {
             trades.push(trade);
 
             if maker.status == OrderStatus::Filled {
+                self.orders.remove(&maker.id);
                 maker_level.pop_front();
             }
 
@@ -127,23 +132,29 @@ impl OrderBook {
         trades
     }
 
-    pub fn cancel_order(&mut self, order_id: Uuid, side: &OrderSide) -> Option<(Decimal, Decimal)> {
+    pub fn cancel_order(&mut self, order_id: Uuid, _side: &OrderSide) -> Option<(Decimal, Decimal)> {
+        let (price, side) = match self.orders.remove(&order_id) {
+            Some(val) => val,
+            None => return None,
+        };
+
         let book_side = match side {
             OrderSide::Buy => &mut self.bids,
             OrderSide::Sell => &mut self.asks,
         };
 
         let mut result = None;
-        for level in book_side.values_mut() {
+        if let Some(level) = book_side.get_mut(&price) {
             if let Some(pos) = level.iter().position(|o| o.id == order_id) {
                 if let Some(order) = level.remove(pos) {
                     result = Some((order.price, order.quantity));
-                    break;
                 }
+            }
+            if level.is_empty() {
+                book_side.remove(&price);
             }
         }
 
-        book_side.retain(|_, level| !level.is_empty());
         result
     }
 
