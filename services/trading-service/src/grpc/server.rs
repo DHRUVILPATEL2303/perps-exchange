@@ -155,6 +155,7 @@ impl GrpcTradingService for TradingGrpcService {
                 trigger_direction,
                 reduce_only: req.reduce_only,
                 margin_mode: req.margin_mode.clone(),
+                post_only: req.post_only,
             };
 
             self.order_repository
@@ -220,6 +221,7 @@ impl GrpcTradingService for TradingGrpcService {
             trigger_direction: None,
             reduce_only: req.reduce_only,
             margin_mode: req.margin_mode.clone(),
+            post_only: req.post_only,
         };
 
         let db_start = std::time::Instant::now();
@@ -267,6 +269,7 @@ impl GrpcTradingService for TradingGrpcService {
             timestamp,
             leverage: req.leverage,
             reduce_only: req.reduce_only,
+            post_only: req.post_only,
         };
 
         let kafka_start = std::time::Instant::now();
@@ -357,6 +360,7 @@ impl GrpcTradingService for TradingGrpcService {
             timestamp,
             leverage: 0,
             reduce_only: false,
+            post_only: false,
         };
 
         self.order_producer

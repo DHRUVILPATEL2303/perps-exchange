@@ -35,6 +35,7 @@ pub struct BookOrder {
     pub status: OrderStatus,
     pub created_at: DateTime<Utc>,
     pub leverage: u32,
+    pub post_only: bool,
 }
 
 impl BookOrder {

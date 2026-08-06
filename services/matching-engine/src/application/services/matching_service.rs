@@ -36,6 +36,43 @@ impl OrderBook {
     }
 
     pub fn match_order(&mut self, mut taker: BookOrder) -> Vec<Trade> {
+        if taker.post_only && taker.order_type == OrderType::Limit {
+            let crosses = match taker.side {
+                OrderSide::Buy => {
+                    if let Some((best_ask, _)) = self.asks.iter().next() {
+                        taker.price >= *best_ask
+                    } else {
+                        false
+                    }
+                }
+                OrderSide::Sell => {
+                    if let Some((best_bid, _)) = self.bids.iter().next_back() {
+                        taker.price <= *best_bid
+                    } else {
+                        false
+                    }
+                }
+            };
+
+            if crosses {
+                let cancel_trade = Trade {
+                    id: Uuid::new_v4(),
+                    symbol: self.symbol.clone(),
+                    maker_order_id: taker.id,
+                    taker_order_id: Uuid::nil(),
+                    maker_user_id: taker.user_id,
+                    taker_user_id: Uuid::nil(),
+                    price: taker.price,
+                    quantity: taker.quantity,
+                    taker_side: "CANCEL".to_string(),
+                    executed_at: Utc::now(),
+                    maker_leverage: taker.leverage,
+                    taker_leverage: 0,
+                };
+                return vec![cancel_trade];
+            }
+        }
+
         let mut trades = Vec::new();
 
         loop {

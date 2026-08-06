@@ -86,7 +86,7 @@ pub fn start_trigger_loop(
                           (trigger_direction = 'BELOW' AND $2 <= trigger_price)
                       )
                 )
-                RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, reduce_only
+                RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, reduce_only, post_only
                 "#,
             )
             .bind(&tick.symbol)
@@ -111,6 +111,7 @@ pub fn start_trigger_loop(
                 let quantity: Decimal = row.get("quantity");
                 let leverage: i32 = row.get("leverage");
                 let reduce_only: bool = row.get("reduce_only");
+                let post_only: bool = row.get("post_only");
 
                 let account_client_clone = account_client.clone();
                 let risk_client_clone = risk_client.clone();
@@ -251,6 +252,7 @@ pub fn start_trigger_loop(
                         timestamp,
                         leverage: leverage as u32,
                         reduce_only,
+                        post_only,
                     };
 
                     if let Err(publish_err) = order_producer_clone.publish_order(&kafka_event).await {

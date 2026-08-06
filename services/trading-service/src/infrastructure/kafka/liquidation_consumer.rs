@@ -114,6 +114,7 @@ impl LiquidationConsumer {
                     timestamp,
                     leverage: position.leverage as u32,
                     reduce_only: true,
+                    post_only: false,
                 };
 
                 self.order_producer.publish_order(&kill_order).await?;

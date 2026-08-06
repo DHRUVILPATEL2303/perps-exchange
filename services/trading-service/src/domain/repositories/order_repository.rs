@@ -18,6 +18,7 @@ pub struct OrderEntity {
     pub trigger_direction: Option<String>,
     pub reduce_only: bool,
     pub margin_mode: String,
+    pub post_only: bool,
 }
 
 #[async_trait]

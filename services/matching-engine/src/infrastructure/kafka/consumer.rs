@@ -36,6 +36,7 @@ pub struct IncomingOrder {
     pub timestamp: u64,
     pub leverage: u32,
     pub reduce_only: bool,
+    pub post_only: bool,
     
     #[serde(skip)]
     pub local_received_timestamp: u64,
@@ -291,6 +292,7 @@ async fn symbol_worker(
                 status: OrderStatus::New,
                 created_at: Utc::now(),
                 leverage: incoming.leverage,
+                post_only: incoming.post_only,
             };
 
             let start_match = Instant::now();
