@@ -58,6 +58,16 @@ impl GrpcTradingService for TradingGrpcService {
             }));
         }
 
+        if req.leverage >= 200 {
+            return Ok(Response::new(PlaceOrderResponse {
+                order_id: "".to_string(),
+                status: "REJECTED".to_string(),
+                error_message: Some(
+                    "Leverage must be strictly less than 200 to avoid instant liquidation".to_string(),
+                ),
+            }));
+        }
+
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
 
         let risk_start = std::time::Instant::now();

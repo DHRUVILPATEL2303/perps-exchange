@@ -126,7 +126,6 @@ impl TradeConsumer {
         leverage: i32,
     ) -> Result<()> {
         let opposite_side = if trade_side == "LONG" { "SHORT" } else { "LONG" };
-        let mmr = Decimal::new(5, 3);
 
         let opposite_pos = self.repository.find_by_user_symbol_side(user_id, symbol, opposite_side).await?;
 
@@ -136,11 +135,7 @@ impl TradeConsumer {
                     let released_margin = (trade_qty / opp_size) * opp_margin;
                     let new_size = opp_size - trade_qty;
                     let new_margin = opp_margin - released_margin;
-                    let new_liq = if opposite_side == "LONG" {
-                        opp_entry - (new_margin / new_size) / (Decimal::ONE - mmr)
-                    } else {
-                        opp_entry + (new_margin / new_size) / (Decimal::ONE + mmr)
-                    };
+                    let new_liq = calculate_liq_price(opp_entry, new_margin, new_size, opposite_side);
 
                     self.repository.update_position(
                         user_id,
@@ -168,11 +163,7 @@ impl TradeConsumer {
                     let remaining_qty = trade_qty - opp_size;
                     if remaining_qty > Decimal::ZERO {
                         let new_margin = (remaining_qty * trade_price) / Decimal::from(leverage);
-                        let new_liq = if trade_side == "LONG" {
-                            trade_price - (new_margin / remaining_qty) / (Decimal::ONE - mmr)
-                        } else {
-                            trade_price + (new_margin / remaining_qty) / (Decimal::ONE + mmr)
-                        };
+                        let new_liq = calculate_liq_price(trade_price, new_margin, remaining_qty, trade_side);
 
                         self.repository.update_position(
                             user_id,
@@ -198,11 +189,7 @@ impl TradeConsumer {
                 let new_entry = ((ext_size * ext_entry) + (trade_qty * trade_price)) / new_size;
                 let added_margin = (trade_qty * trade_price) / Decimal::from(ext_lev);
                 let new_margin = ext_margin + added_margin;
-                let new_liq = if trade_side == "LONG" {
-                    new_entry - (new_margin / new_size) / (Decimal::ONE - mmr)
-                } else {
-                    new_entry + (new_margin / new_size) / (Decimal::ONE + mmr)
-                };
+                let new_liq = calculate_liq_price(new_entry, new_margin, new_size, trade_side);
 
                 self.repository.update_position(
                     user_id,
@@ -219,11 +206,7 @@ impl TradeConsumer {
         }
 
         let new_margin = (trade_qty * trade_price) / Decimal::from(leverage);
-        let new_liq = if trade_side == "LONG" {
-            trade_price - (new_margin / trade_qty) / (Decimal::ONE - mmr)
-        } else {
-            trade_price + (new_margin / trade_qty) / (Decimal::ONE + mmr)
-        };
+        let new_liq = calculate_liq_price(trade_price, new_margin, trade_qty, trade_side);
 
         self.repository.update_position(
             user_id,
@@ -237,5 +220,26 @@ impl TradeConsumer {
         ).await?;
 
         Ok(())
+    }
+}
+
+fn calculate_liq_price(entry_price: Decimal, margin: Decimal, size: Decimal, side: &str) -> Decimal {
+    let mmr = Decimal::new(5, 3); // MMR = 0.005 (0.5%)
+    let one = Decimal::ONE;
+    
+    if size.is_zero() {
+        return Decimal::ZERO;
+    }
+
+    let margin_per_size = margin / size;
+
+    if side == "LONG" {
+        let num = entry_price - margin_per_size;
+        let den = one - mmr;
+        num / den
+    } else {
+        let num = entry_price + margin_per_size;
+        let den = one + mmr;
+        num / den
     }
 }
