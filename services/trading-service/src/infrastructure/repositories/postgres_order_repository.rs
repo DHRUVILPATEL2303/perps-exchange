@@ -19,9 +19,9 @@ impl OrderRepository for PostgresOrderRepository {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity> {
         sqlx::query(
             r#"
-            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage
+            INSERT INTO orders (id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+            RETURNING id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction
             "#,
         )
         .bind(order.id)
@@ -33,6 +33,8 @@ impl OrderRepository for PostgresOrderRepository {
         .bind(order.quantity)
         .bind(order.status)
         .bind(order.leverage) 
+        .bind(order.trigger_price)
+        .bind(order.trigger_direction)
         .fetch_one(&self.pool)
         .await
         .map(|row| OrderEntity {
@@ -45,6 +47,8 @@ impl OrderRepository for PostgresOrderRepository {
             quantity: row.get("quantity"),
             status: row.get("status"),
             leverage: row.get("leverage"), 
+            trigger_price: row.get("trigger_price"),
+            trigger_direction: row.get("trigger_direction"),
         })
         .map_err(Into::into)
     }
@@ -62,7 +66,7 @@ impl OrderRepository for PostgresOrderRepository {
     async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>> {
         let rows = sqlx::query(
             r#"
-            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage
+            SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction
             FROM orders
             WHERE user_id = $1 AND status = 'OPEN'
             "#,
@@ -83,6 +87,8 @@ impl OrderRepository for PostgresOrderRepository {
                 quantity: row.get("quantity"),
                 status: row.get("status"),
                 leverage: row.get("leverage"),
+                trigger_price: row.get("trigger_price"),
+                trigger_direction: row.get("trigger_direction"),
             })
             .collect();
 

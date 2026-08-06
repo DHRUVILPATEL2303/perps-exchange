@@ -39,7 +39,6 @@ pub async fn bootstrap() -> Result<(
 
     telemetry::http::spawn_metrics_server(config.server.port);
 
-
     let grpc_addr: SocketAddr = format!("{}:{}", config.grpc.host, config.grpc.port)
         .parse()
         .expect("Invalid gRPC address");
@@ -102,6 +101,18 @@ pub async fn bootstrap() -> Result<(
     ));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 
+    let price_tracker = crate::domain::price_tracker::PriceTracker::new();
+    let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
+
+    crate::infrastructure::kafka::trigger_loop::start_trigger_loop(
+        db.pool().clone(),
+        redis_url,
+        price_tracker.clone(),
+        account_client.clone(),
+        risk_client.clone(),
+        order_producer.clone(),
+    );
+
     let grpc_service = TradingGrpcService {
         position_service: position_service.clone(),
         account_client: account_client.clone(),
@@ -109,6 +120,7 @@ pub async fn bootstrap() -> Result<(
         order_producer: order_producer.clone(),
         order_repository: order_repository.clone(),
         market_cache: market_cache.clone(),
+        price_tracker: price_tracker.clone(),
     };
 
     let grpc_server = Server::builder()

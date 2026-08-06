@@ -28,3 +28,4 @@ database = { path = "../../crates/database" }
 thiserror.workspace = true
 rdkafka = { workspace = true }
 futures-util.workspace = true
+redis.workspace = true

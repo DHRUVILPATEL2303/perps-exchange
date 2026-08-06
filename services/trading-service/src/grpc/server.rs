@@ -1,6 +1,7 @@
 use crate::{
     application::usecase::position_usecase::PositionUseCase,
     domain::repositories::order_repository::{OrderEntity, OrderRepository},
+    domain::price_tracker::PriceTracker,
     infrastructure::{
         cache::market_cache::MarketCache,
         grpc::{account_client::AccountGrpcClient, risk_client::RiskGrpcClient},
@@ -17,6 +18,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
+use rust_decimal::Decimal;
 
 pub struct TradingGrpcService {
     pub position_service: Arc<dyn PositionUseCase>,
@@ -25,6 +27,7 @@ pub struct TradingGrpcService {
     pub order_producer: Arc<OrderProducer>,
     pub order_repository: Arc<dyn OrderRepository>,
     pub market_cache: Arc<MarketCache>,
+    pub price_tracker: PriceTracker,
 }
 
 #[tonic::async_trait]
@@ -68,7 +71,63 @@ impl GrpcTradingService for TradingGrpcService {
             }));
         }
 
+        let is_stop_order = req.order_type == "STOP_MARKET" || req.order_type == "STOP_LIMIT";
+
+        let (trigger_price_val, trigger_direction) = if is_stop_order {
+            if req.trigger_price.is_none() {
+                return Ok(Response::new(PlaceOrderResponse {
+                    order_id: "".to_string(),
+                    status: "REJECTED".to_string(),
+                    error_message: Some("Trigger price is required for StopMarket and StopLimit orders".to_string()),
+                }));
+            }
+            let tp_val = Decimal::from_str(req.trigger_price.as_ref().unwrap())
+                .map_err(|e| Status::invalid_argument(format!("Invalid trigger_price: {}", e)))?;
+            let current_price = self.price_tracker.get_price(&req.symbol).await.unwrap_or(tp_val);
+            let dir = if tp_val > current_price {
+                "ABOVE".to_string()
+            } else {
+                "BELOW".to_string()
+            };
+            (Some(tp_val), Some(dir))
+        } else {
+            (None, None)
+        };
+
         let price_str = req.price.clone().unwrap_or_else(|| "0.00".to_string());
+
+        let order_id = Uuid::new_v4();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        if is_stop_order {
+            let order_entity = OrderEntity {
+                id: order_id,
+                user_id,
+                symbol: req.symbol.clone(),
+                side: req.side.clone(),
+                order_type: req.order_type.clone(),
+                price: rust_decimal::Decimal::from_str(&price_str)
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                quantity: rust_decimal::Decimal::from_str(&req.quantity)
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                status: "PENDING_TRIGGER".to_string(),
+                leverage: req.leverage as i32,
+                trigger_price: trigger_price_val,
+                trigger_direction,
+            };
+
+            self.order_repository
+                .create(order_entity)
+                .await
+                .map_err(|e| Status::internal(e.to_string()))?;
+
+            return Ok(Response::new(PlaceOrderResponse {
+                order_id: order_id.to_string(),
+                status: "PENDING_TRIGGER".to_string(),
+                error_message: None,
+            }));
+        }
 
         let risk_start = std::time::Instant::now();
         let check_res = self
@@ -105,10 +164,6 @@ impl GrpcTradingService for TradingGrpcService {
             }));
         }
 
-        let order_id = Uuid::new_v4();
-        let user_id =
-            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
-
         let order_entity = OrderEntity {
             id: order_id,
             user_id,
@@ -121,6 +176,8 @@ impl GrpcTradingService for TradingGrpcService {
                 .unwrap_or(rust_decimal::Decimal::ZERO),
             status: "OPEN".to_string(),
             leverage: req.leverage as i32,
+            trigger_price: None,
+            trigger_direction: None,
         };
 
         let db_start = std::time::Instant::now();
