@@ -21,6 +21,9 @@ pub struct KafkaOrderEvent {
     pub quantity: String,
     pub action: String,
     pub timestamp: u64,
+    pub leverage: u32,
+    pub reduce_only: bool,
+    pub post_only: bool,
 }
 
 #[tokio::main]
@@ -28,6 +31,7 @@ async fn main() -> Result<()> {
     let brokers = "localhost:9092";
 
     println!("=== Matching Engine Direct Kafka Load Tester ===");
+    let target_orders = 200_000_00;
 
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", brokers)
@@ -37,16 +41,13 @@ async fn main() -> Result<()> {
         .set("linger.ms", "5")
         .create()?;
 
-    let target_orders = 50_000_000;
-    println!(
-        "Pushing {} orders directly to Kafka topic 'order-events'...",
-        target_orders
-    );
-
-    let start_time = Instant::now();
+    let producer = Arc::new(producer);
     let sent_count = Arc::new(AtomicUsize::new(0));
 
-    let price_buy = Decimal::from_str("60000.00").unwrap();
+    println!("Sending {} test orders...", target_orders);
+    let start_time = Instant::now();
+
+    let price_buy = Decimal::from_str("59990.00").unwrap();
     let price_sell = Decimal::from_str("60010.00").unwrap();
     let qty = Decimal::from_str("0.1").unwrap();
 
@@ -73,6 +74,9 @@ async fn main() -> Result<()> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_micros() as u64,
+            leverage: 1,
+            reduce_only: false,
+            post_only: false,
         };
 
         let payload = bincode::serialize(&order)?;

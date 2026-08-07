@@ -1,18 +1,17 @@
-use std::io::Result;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use crate::{
+    application::services::account_service::AccountService, grpc::server::AccountGrpcService,
+    infrastructure::repositories::postgres_account_repository::PostgresAccountRepository,
+    presentation, state::AppState,
+};
 use actix_web::{HttpServer, web::Data};
 use config::app::AppConfig;
 use database::manager::DatabaseManager;
 use proto::account::account_service_server::AccountServiceServer;
 use sqlx::{Connection, PgConnection};
+use std::io::Result;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tonic::transport::Server;
-use crate::{
-    application::services::account_service::AccountService,
-    grpc::server::AccountGrpcService,
-    infrastructure::repositories::postgres_account_repository::PostgresAccountRepository,
-    presentation, state::AppState,
-};
 
 pub async fn run() -> Result<()> {
     let config = AppConfig::load("account-service").expect("Failed to load config");
@@ -64,7 +63,7 @@ pub async fn run() -> Result<()> {
     let state = Data::new(AppState {
         config: Arc::new(config.clone()),
         db,
-        account_service,
+        account_service: account_service.clone(),
     });
 
     let http_server = HttpServer::new(move || {
@@ -77,8 +76,23 @@ pub async fn run() -> Result<()> {
     .bind((config.server.host.clone(), config.server.port))?
     .run();
 
-    println!("HTTP Server started at {}:{}", config.server.host, config.server.port);
+    println!(
+        "HTTP Server started at {}:{}",
+        config.server.host, config.server.port
+    );
     println!("gRPC Server started at {}", grpc_addr);
+
+    let brokers = config.kafka.brokers.join(",");
+    let deposit_consumer = crate::infrastructure::kafka::deposit_consumer::DepositConsumer::new(
+        &brokers,
+        "account-service-deposits-group-v1",
+        account_service.clone(),
+    )
+    .expect("Failed to initialize DepositConsumer");
+
+    tokio::spawn(async move {
+        deposit_consumer.run().await;
+    });
 
     tokio::try_join!(http_server, async {
         grpc_server.await.map_err(std::io::Error::other)

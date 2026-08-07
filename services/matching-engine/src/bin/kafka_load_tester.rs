@@ -6,14 +6,18 @@ use uuid::Uuid;
 
 #[derive(Serialize)]
 pub struct IncomingOrder {
-    pub id: String,
-    pub user_id: String,
+    pub id: Uuid,
+    pub user_id: Uuid,
     pub symbol: String,
     pub side: String,
     pub order_type: String,
     pub price: String,
     pub quantity: String,
     pub action: String,
+    pub timestamp: u64,
+    pub leverage: u32,
+    pub reduce_only: bool,
+    pub post_only: bool,
 }
 
 fn main() {
@@ -40,8 +44,8 @@ fn main() {
 
     for i in 0..num_orders {
         let order = IncomingOrder {
-            id: Uuid::new_v4().to_string(),
-            user_id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
             symbol: "BTCUSDT".to_string(),
             side: if i % 2 == 0 {
                 "BUY".to_string()
@@ -56,17 +60,24 @@ fn main() {
             },
             quantity: "0.1".to_string(),
             action: "PLACE".to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as u64,
+            leverage: 1,
+            reduce_only: false,
+            post_only: false,
         };
 
-        let payload = serde_json::to_string(&order).unwrap();
+        let payload = bincode::serialize(&order).unwrap();
 
         let mut record = BaseRecord::to(topic)
-            .payload(payload.as_bytes())
+            .payload(payload.as_slice())
             .key(b"BTCUSDT");
 
         loop {
             match producer.send(record) {
-                Ok(_) => break, // Successfully enqueued to C buffer
+                Ok(_) => break,
                 Err((e, returned_record)) => {
                     if e == rdkafka::error::KafkaError::MessageProduction(
                         rdkafka::types::RDKafkaErrorCode::QueueFull,

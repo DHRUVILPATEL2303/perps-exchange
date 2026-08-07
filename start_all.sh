@@ -31,3 +31,6 @@ echo $! > logs/binance-liquidation.pid
 
 target/debug/api-gateway > logs/api-gateway.log 2>&1 &
 echo $! > logs/api-gateway.pid
+
+target/debug/blockchain-listener > logs/blockchain-listener.log 2>&1 &
+echo $! > logs/blockchain-listener.pid

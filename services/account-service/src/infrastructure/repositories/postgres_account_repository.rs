@@ -1,5 +1,6 @@
 use crate::domain::entities::account::Account;
 use crate::domain::entities::transaction::Transaction;
+use crate::domain::entities::custody_address::CustodyAddress;
 use crate::domain::repositories::account_repository::AccountRepository;
 use async_trait::async_trait;
 use errors::app_error::RepositoryError;
@@ -203,6 +204,7 @@ impl AccountRepository for PostgresAccountRepository {
         asset: &str,
         amount: rust_decimal::Decimal,
         adjustment_type: &str,
+        tx_hash: Option<String>,
     ) -> Result<Account, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
@@ -276,7 +278,7 @@ impl AccountRepository for PostgresAccountRepository {
             sqlx::query(
                 r#"
                 INSERT INTO transactions (id, user_id, asset, amount, transaction_type, status, tx_hash, created_at)
-                VALUES ($1, $2, $3, $4, $5, 'SUCCESS', NULL, NOW())
+                VALUES ($1, $2, $3, $4, $5, 'SUCCESS', $6, NOW())
                 "#,
             )
             .bind(Uuid::new_v4())
@@ -284,6 +286,7 @@ impl AccountRepository for PostgresAccountRepository {
             .bind(asset)
             .bind(amount)
             .bind(tx_type)
+            .bind(tx_hash)
             .execute(&mut *tx)
             .await?;
         }
@@ -342,5 +345,36 @@ impl AccountRepository for PostgresAccountRepository {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    async fn find_custody_address_by_user(&self, user_id: Uuid) -> Result<Option<CustodyAddress>, RepositoryError> {
+        let row = sqlx::query_as::<_, CustodyAddress>(
+            r#"
+            SELECT user_id, pda_address, usdc_ata, usdt_ata
+            FROM custody_addresses
+            WHERE user_id = $1
+            "#
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    async fn save_custody_address(&self, custody: CustodyAddress) -> Result<CustodyAddress, RepositoryError> {
+        let created = sqlx::query_as::<_, CustodyAddress>(
+            r#"
+            INSERT INTO custody_addresses (user_id, pda_address, usdc_ata, usdt_ata, created_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            RETURNING user_id, pda_address, usdc_ata, usdt_ata
+            "#
+        )
+        .bind(custody.user_id)
+        .bind(custody.pda_address)
+        .bind(custody.usdc_ata)
+        .bind(custody.usdt_ata)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(created)
     }
 }

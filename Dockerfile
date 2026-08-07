@@ -28,6 +28,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     -p api-gateway \
     -p chart-service \
     -p telegram-bot \
+    -p blockchain-listener \
     && mkdir -p /tmp/bins \
     && cp target/release/market-service /tmp/bins/ \
     && cp target/release/account-service /tmp/bins/ \
@@ -38,7 +39,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && cp target/release/binance-liquidation /tmp/bins/ \
     && cp target/release/api-gateway /tmp/bins/ \
     && cp target/release/chart-service /tmp/bins/ \
-    && cp target/release/telegram-bot /tmp/bins/
+    && cp target/release/telegram-bot /tmp/bins/ \
+    && cp target/release/blockchain-listener /tmp/bins/
 
 FROM debian:bookworm-slim
 
@@ -59,6 +61,7 @@ COPY --from=builder /tmp/bins/binance-liquidation /usr/local/bin/
 COPY --from=builder /tmp/bins/api-gateway /usr/local/bin/
 COPY --from=builder /tmp/bins/chart-service /usr/local/bin/
 COPY --from=builder /tmp/bins/telegram-bot /usr/local/bin/
+COPY --from=builder /tmp/bins/blockchain-listener /usr/local/bin/
 
 COPY --from=builder /usr/src/perps-exchange/configs /app/configs
 COPY --from=builder /usr/src/perps-exchange/configs/common.docker.toml /app/configs/common.toml

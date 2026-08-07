@@ -1,9 +1,10 @@
 use crate::application::usecase::account_usecase::AccountUseCase;
 use proto::account::{
-    AdjustMarginRequest, AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse,
-    GetTransactionHistoryRequest, GetTransactionHistoryResponse, LockMarginRequest,
-    LockMarginResponse, ReleaseMarginRequest, ReleaseMarginResponse, TransactionInfo,
-    account_service_server::AccountService as GrpcAccountService,
+    account_service_server::AccountService as GrpcAccountService, AdjustMarginRequest,
+    AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse, GetDepositAddressRequest,
+    GetDepositAddressResponse, GetTransactionHistoryRequest, GetTransactionHistoryResponse,
+    LockMarginRequest, LockMarginResponse, ReleaseMarginRequest, ReleaseMarginResponse,
+    TransactionInfo,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -87,7 +88,7 @@ impl GrpcAccountService for AccountGrpcService {
 
         let account = self
             .service
-            .adjust_margin(user_id, "USDT", amount, &req.adjustment_type)
+            .adjust_margin(user_id, "USDT", amount, &req.adjustment_type, None)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -126,6 +127,27 @@ impl GrpcAccountService for AccountGrpcService {
 
         Ok(Response::new(GetTransactionHistoryResponse {
             transactions: mapped,
+        }))
+    }
+
+    async fn get_deposit_address(
+        &self,
+        request: Request<GetDepositAddressRequest>,
+    ) -> Result<Response<GetDepositAddressResponse>, Status> {
+        let req = request.into_inner();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let custody = self
+            .service
+            .get_or_create_custody_address(user_id)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetDepositAddressResponse {
+            pda_address: custody.pda_address,
+            usdc_ata: custody.usdc_ata,
+            usdt_ata: custody.usdt_ata,
         }))
     }
 }

@@ -8,4 +8,4 @@ for pidfile in logs/*.pid; do
     fi
 done
 
-killall market-service account-service trading-service risk-engine-service matching-engine oracle-aggregator binance-liquidation api-gateway 2>/dev/null
+killall market-service account-service trading-service risk-engine-service matching-engine oracle-aggregator binance-liquidation api-gateway blockchain-listener 2>/dev/null

@@ -12,8 +12,11 @@ pub trait AccountRepository: Send + Sync {
 
     async fn lock_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(), RepositoryError>;
     async fn release_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(), RepositoryError>;
-    async fn adjust_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal, adjustment_type: &str) -> Result<Account, RepositoryError>;
+    async fn adjust_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal, adjustment_type: &str, tx_hash: Option<String>) -> Result<Account, RepositoryError>;
 
     async fn create_transaction(&self, tx: crate::domain::entities::transaction::Transaction) -> Result<crate::domain::entities::transaction::Transaction, RepositoryError>;
     async fn list_transactions_by_user(&self, user_id: Uuid) -> Result<Vec<crate::domain::entities::transaction::Transaction>, RepositoryError>;
+
+    async fn find_custody_address_by_user(&self, user_id: Uuid) -> Result<Option<crate::domain::entities::custody_address::CustodyAddress>, RepositoryError>;
+    async fn save_custody_address(&self, custody: crate::domain::entities::custody_address::CustodyAddress) -> Result<crate::domain::entities::custody_address::CustodyAddress, RepositoryError>;
 }

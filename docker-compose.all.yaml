@@ -82,7 +82,7 @@ services:
       [
         "bash",
         "-c",
-        "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-depth --partitions 1 --replication-factor 1",
+        "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-depth --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic solana-deposits --partitions 1 --replication-factor 1",
       ]
 
   market-service:
@@ -355,6 +355,23 @@ services:
       - KAFKA_BROKERS=kafka:29092
       - TELEGRAM_MINI_APP_URL=https://dhruvilpatel.github.io/perps-tma-placeholder
     depends_on:
+      kafka:
+        condition: service_started
+
+  blockchain-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blockchain-listener
+    command: ["blockchain-listener"]
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgres://postgres:postgres@pgbouncer:6432/perps_accounts
+      - KAFKA_BROKERS=kafka:29092
+      - SOLANA_RPC_URL=https://api.devnet.solana.com
+    depends_on:
+      pgbouncer:
+        condition: service_started
       kafka:
         condition: service_started
 

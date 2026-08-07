@@ -8,6 +8,7 @@ service AccountService {
   rpc ReleaseMargin(ReleaseMarginRequest) returns (ReleaseMarginResponse);
   rpc AdjustMargin(AdjustMarginRequest) returns (AdjustMarginResponse);
   rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
+  rpc GetDepositAddress(GetDepositAddressRequest) returns (GetDepositAddressResponse);
 }
 
 message GetBalanceRequest {
@@ -63,4 +64,13 @@ message TransactionInfo {
   string status = 6;
   string tx_hash = 7;
   string created_at = 8;
+}
+
+message GetDepositAddressRequest {
+  string user_id = 1;
+}
+message GetDepositAddressResponse {
+  string pda_address = 1;
+  string usdc_ata = 2;
+  string usdt_ata = 3;
 }

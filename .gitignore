@@ -3,3 +3,5 @@ target/
 .idea/
 .vscode/
 .DS_Store
+custody-test-frontend/
+
