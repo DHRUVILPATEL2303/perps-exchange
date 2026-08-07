@@ -1,4 +1,4 @@
-use actix_web::web::{Data, Path, Json};
+use actix_web::web::{Data, Path, Json, Query};
 use actix_web::HttpResponse;
 use crate::state::AppState;
 use proto::account::{GetBalanceRequest, AdjustMarginRequest, GetTransactionHistoryRequest, GetDepositAddressRequest};
@@ -17,12 +17,19 @@ pub struct HTTPWithdrawRequest {
     pub amount: String,
 }
 
-pub async fn get_balance(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
+#[derive(Deserialize)]
+pub struct BalanceQuery {
+    pub asset: Option<String>,
+}
+
+pub async fn get_balance(state: Data<AppState>, path: Path<Uuid>, query: Query<BalanceQuery>) -> HttpResponse {
     let user_id = path.into_inner();
     let mut client = state.account_client.clone();
+    let asset = query.asset.clone().unwrap_or_else(|| "USDC".to_string());
+    
     let req = GetBalanceRequest {
         user_id: user_id.to_string(),
-        asset: "USDT".to_string(),
+        asset,
     };
     match client.get_balance(req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner()),
