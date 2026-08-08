@@ -369,11 +369,16 @@ services:
       - DATABASE_URL=postgres://postgres:postgres@pgbouncer:6432/perps_accounts
       - KAFKA_BROKERS=kafka:29092
       - SOLANA_RPC_URL=https://devnet.helius-rpc.com/?api-key=b07f07b6-4c5a-417d-9c31-93300c828917
+      - CUSTODY_PROGRAM_ID=5Kah8xwrdYfaSLoAAjsbbrpdJJXroiiYmHvduvpgeAEp
+      - CUSTODY_TREASURY_USDC_ATA=C1fj5ryHHiTsoknjjC9YRmsSvcFNa6f2H1MZeMatmDX5
+      - CUSTODY_TREASURY_USDT_ATA=FbRXL78sGoqmoaBPSDWysxerbWKf9icdfmdiHGiJMEAN
     depends_on:
       pgbouncer:
         condition: service_started
       kafka:
         condition: service_started
+    volumes:
+      - ./configs:/app/configs
 
 volumes:
   postgres_data:
