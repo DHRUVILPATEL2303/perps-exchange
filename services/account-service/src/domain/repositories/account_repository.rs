@@ -16,6 +16,9 @@ pub trait AccountRepository: Send + Sync {
 
     async fn create_transaction(&self, tx: crate::domain::entities::transaction::Transaction) -> Result<crate::domain::entities::transaction::Transaction, RepositoryError>;
     async fn list_transactions_by_user(&self, user_id: Uuid) -> Result<Vec<crate::domain::entities::transaction::Transaction>, RepositoryError>;
+    async fn initiate_withdrawal(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(Account, Uuid), RepositoryError>;
+    async fn update_transaction_status_and_hash(&self, id: Uuid, status: &str, tx_hash: Option<String>) -> Result<(), RepositoryError>;
+    async fn revert_withdrawal(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal, tx_id: Uuid, error_msg: &str) -> Result<Account, RepositoryError>;
 
     async fn find_custody_address_by_user(&self, user_id: Uuid) -> Result<Option<crate::domain::entities::custody_address::CustodyAddress>, RepositoryError>;
     async fn save_custody_address(&self, custody: crate::domain::entities::custody_address::CustodyAddress) -> Result<crate::domain::entities::custody_address::CustodyAddress, RepositoryError>;

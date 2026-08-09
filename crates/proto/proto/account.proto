@@ -9,6 +9,19 @@ service AccountService {
   rpc AdjustMargin(AdjustMarginRequest) returns (AdjustMarginResponse);
   rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
   rpc GetDepositAddress(GetDepositAddressRequest) returns (GetDepositAddressResponse);
+  rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+}
+
+message WithdrawRequest {
+  string user_id = 1;
+  string amount = 2;
+  string asset = 3;
+  string destination_address = 4;
+}
+
+message WithdrawResponse {
+  string tx_hash = 1;
+  string new_balance = 2;
 }
 
 message GetBalanceRequest {

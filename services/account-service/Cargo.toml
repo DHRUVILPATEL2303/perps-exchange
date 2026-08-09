@@ -21,6 +21,7 @@ tonic = { workspace = true }
 prost = { workspace = true }
 redis = { workspace = true }
 solana-sdk = "2.0"
+solana-client = "2.0"
 anyhow.workspace = true
 futures-util.workspace = true
 rdkafka.workspace = true

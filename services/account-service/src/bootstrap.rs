@@ -12,6 +12,8 @@ use std::io::Result;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tonic::transport::Server;
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::signature::Keypair;
 
 pub async fn run() -> Result<()> {
     let config = AppConfig::load("account-service").expect("Failed to load config");
@@ -48,8 +50,16 @@ pub async fn run() -> Result<()> {
             .expect("Migration failed");
     }
 
+    let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
+        .unwrap_or_else(|_| "https://devnet.helius-rpc.com/?api-key=b07f07b6-4c5a-417d-9c31-93300c828917".to_string());
+    let rpc_client = Arc::new(RpcClient::new(solana_rpc_url));
+
+    let keypair_path = std::env::var("CUSTODY_ADMIN_KEYPAIR_PATH")
+        .unwrap_or_else(|_| "/app/configs/custody-admin-keypair.json".to_string());
+    let admin_keypair = Arc::new(load_keypair(&keypair_path).expect("Failed to load admin keypair"));
+
     let repository = Arc::new(PostgresAccountRepository::new(db.pool().clone()));
-    let account_service = Arc::new(AccountService::new(repository));
+    let account_service = Arc::new(AccountService::new(repository, rpc_client, admin_keypair));
 
     let grpc_service = AccountGrpcService {
         service: account_service.clone(),
@@ -106,4 +116,13 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to listen for Ctrl+C");
+}
+
+fn load_keypair(path: &str) -> std::io::Result<Keypair> {
+    let content = std::fs::read_to_string(path)?;
+    let bytes: Vec<u8> = serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let keypair = Keypair::from_bytes(&bytes)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    Ok(keypair)
 }

@@ -1,6 +1,6 @@
 use crate::domain::entities::account::Account;
-use crate::domain::entities::transaction::Transaction;
 use crate::domain::entities::custody_address::CustodyAddress;
+use crate::domain::entities::transaction::Transaction;
 use crate::domain::repositories::account_repository::AccountRepository;
 use async_trait::async_trait;
 use errors::app_error::RepositoryError;
@@ -347,13 +347,16 @@ impl AccountRepository for PostgresAccountRepository {
         Ok(rows)
     }
 
-    async fn find_custody_address_by_user(&self, user_id: Uuid) -> Result<Option<CustodyAddress>, RepositoryError> {
+    async fn find_custody_address_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<CustodyAddress>, RepositoryError> {
         let row = sqlx::query_as::<_, CustodyAddress>(
             r#"
             SELECT user_id, pda_address, usdc_ata, usdt_ata
             FROM custody_addresses
             WHERE user_id = $1
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_optional(&self.pool)
@@ -361,13 +364,16 @@ impl AccountRepository for PostgresAccountRepository {
         Ok(row)
     }
 
-    async fn save_custody_address(&self, custody: CustodyAddress) -> Result<CustodyAddress, RepositoryError> {
+    async fn save_custody_address(
+        &self,
+        custody: CustodyAddress,
+    ) -> Result<CustodyAddress, RepositoryError> {
         let created = sqlx::query_as::<_, CustodyAddress>(
             r#"
             INSERT INTO custody_addresses (user_id, pda_address, usdc_ata, usdt_ata, created_at)
             VALUES ($1, $2, $3, $4, NOW())
             RETURNING user_id, pda_address, usdc_ata, usdt_ata
-            "#
+            "#,
         )
         .bind(custody.user_id)
         .bind(custody.pda_address)
@@ -376,5 +382,150 @@ impl AccountRepository for PostgresAccountRepository {
         .fetch_one(&self.pool)
         .await?;
         Ok(created)
+    }
+
+    async fn initiate_withdrawal(
+        &self,
+        user_id: Uuid,
+        asset: &str,
+        amount: rust_decimal::Decimal,
+    ) -> Result<(Account, Uuid), RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let account = sqlx::query_as::<_, Account>(
+            r#"
+            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
+            FROM accounts
+            WHERE user_id = $1 AND asset = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(user_id)
+        .bind(asset)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let mut account = match account {
+            Some(a) => a,
+            None => {
+                tx.rollback().await?;
+                return Err(RepositoryError::NotFound);
+            }
+        };
+
+        let available = account.balance - account.frozen;
+        if available < amount {
+            tx.rollback().await?;
+            return Err(RepositoryError::Database(sqlx::Error::Protocol(
+                "Insufficient balance".into(),
+            )));
+        }
+
+        account.balance -= amount;
+
+        let updated = sqlx::query_as::<_, Account>(
+            r#"
+            UPDATE accounts
+            SET balance = $1, updated_at = NOW()
+            WHERE id = $2
+            RETURNING id, user_id, asset, balance, frozen, created_at, updated_at
+            "#,
+        )
+        .bind(account.balance)
+        .bind(account.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let tx_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO transactions (id, user_id, asset, amount, transaction_type, status, tx_hash, created_at)
+            VALUES ($1, $2, $3, $4, 'WITHDRAWAL', 'PENDING', NULL, NOW())
+            "#,
+        )
+        .bind(tx_id)
+        .bind(user_id)
+        .bind(asset)
+        .bind(amount)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok((updated, tx_id))
+    }
+
+    async fn update_transaction_status_and_hash(
+        &self,
+        id: Uuid,
+        status: &str,
+        tx_hash: Option<String>,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query(
+            r#"
+            UPDATE transactions
+            SET status = $1, tx_hash = $2
+            WHERE id = $3
+            "#,
+        )
+        .bind(status)
+        .bind(tx_hash)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn revert_withdrawal(
+        &self,
+        user_id: Uuid,
+        asset: &str,
+        amount: rust_decimal::Decimal,
+        tx_id: Uuid,
+        error_msg: &str,
+    ) -> Result<Account, RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let mut account = sqlx::query_as::<_, Account>(
+            r#"
+            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
+            FROM accounts
+            WHERE user_id = $1 AND asset = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(user_id)
+        .bind(asset)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        account.balance += amount;
+
+        let updated = sqlx::query_as::<_, Account>(
+            r#"
+            UPDATE accounts
+            SET balance = $1, updated_at = NOW()
+            WHERE id = $2
+            RETURNING id, user_id, asset, balance, frozen, created_at, updated_at
+            "#,
+        )
+        .bind(account.balance)
+        .bind(account.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE transactions
+            SET status = 'FAILED', tx_hash = $1
+            WHERE id = $2
+            "#,
+        )
+        .bind(error_msg)
+        .bind(tx_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(updated)
     }
 }

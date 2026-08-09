@@ -4,7 +4,7 @@ use proto::account::{
     AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse, GetDepositAddressRequest,
     GetDepositAddressResponse, GetTransactionHistoryRequest, GetTransactionHistoryResponse,
     LockMarginRequest, LockMarginResponse, ReleaseMarginRequest, ReleaseMarginResponse,
-    TransactionInfo,
+    TransactionInfo, WithdrawRequest, WithdrawResponse,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -148,6 +148,28 @@ impl GrpcAccountService for AccountGrpcService {
             pda_address: custody.pda_address,
             usdc_ata: custody.usdc_ata,
             usdt_ata: custody.usdt_ata,
+        }))
+    }
+
+    async fn withdraw(
+        &self,
+        request: Request<WithdrawRequest>,
+    ) -> Result<Response<WithdrawResponse>, Status> {
+        let req = request.into_inner();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let amount =
+            Decimal::from_str(&req.amount).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let (tx_hash, new_balance) = self
+            .service
+            .withdraw_funds(user_id, &req.asset, amount, &req.destination_address)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(WithdrawResponse {
+            tx_hash,
+            new_balance: new_balance.to_string(),
         }))
     }
 }
