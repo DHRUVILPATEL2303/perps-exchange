@@ -20,7 +20,7 @@ members = [
     "services/binance-liquidation", "services/oracle-aggregator",
     "services/matching-engine", "services/risk-engine-service", "services/chart-service",
     "services/telegram-bot", "exchange-custody-contract",
-    "services/blockchain-listener",
+    "services/blockchain-listener", "services/withdrawal-signer",
 ]
 [workspace.package]
 edition = "2024"

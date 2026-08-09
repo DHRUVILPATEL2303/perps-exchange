@@ -10,27 +10,22 @@ use errors::app_error::ServiceError;
 use rust_decimal::Decimal;
 use std::sync::Arc;
 use uuid::Uuid;
-
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::signature::Keypair;
-use solana_sdk::signer::Signer;
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use std::time::Duration;
 
 pub struct AccountService {
     repository: Arc<dyn AccountRepository>,
-    rpc_client: Arc<RpcClient>,
-    admin_keypair: Arc<Keypair>,
+    producer: Arc<FutureProducer>,
 }
 
 impl AccountService {
     pub fn new(
         repository: Arc<dyn AccountRepository>,
-        rpc_client: Arc<RpcClient>,
-        admin_keypair: Arc<Keypair>,
+        producer: Arc<FutureProducer>,
     ) -> Self {
         Self {
             repository,
-            rpc_client,
-            admin_keypair,
+            producer,
         }
     }
 }
@@ -127,7 +122,7 @@ impl AccountUseCase for AccountService {
             usdt_ata: usdt_ata.to_string(),
         };
 
-        let saved = self.repository.save_custody_address(new_custody).await?;
+        let saved = self.repository.save_custody_address(new_custody).await? ;
         Ok(saved)
     }
 
@@ -142,7 +137,7 @@ impl AccountUseCase for AccountService {
             return Err(ServiceError::Validation("Unsupported asset".to_string()));
         }
 
-        let user_dest_pubkey = Pubkey::from_str(destination_address)
+        let _ = Pubkey::from_str(destination_address)
             .map_err(|e| ServiceError::Validation(format!("Invalid destination address: {}", e)))?;
 
         let (updated_account, tx_id) = self
@@ -150,110 +145,42 @@ impl AccountUseCase for AccountService {
             .initiate_withdrawal(user_id, asset, amount)
             .await?;
 
-        let amount_multiplier = Decimal::from(1_000_000u64);
-        let mut rounded = amount * amount_multiplier;
-        rounded.rescale(0);
-        let amount_base_units = rounded.to_string().parse::<u64>().map_err(|e| {
-            ServiceError::Validation(format!("Invalid amount format: {}", e))
-        })?;
-
-        let usdc_mint = Pubkey::from_str("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU").unwrap();
-        let usdt_mint = Pubkey::from_str("EJwZeg1u717JhEv6YoRrt8A6gGTLrmKWJxgB7P15fTo3").unwrap();
-        let mint_pubkey = if asset == "USDC" { usdc_mint } else { usdt_mint };
-
-        let treasury_ata_env = if asset == "USDC" {
-            std::env::var("CUSTODY_TREASURY_USDC_ATA")
-                .unwrap_or_else(|_| "7zCsbfCpT13QzF9KCKbfvJHsxPyYwv1s7kJ6ZhXtrVsC".to_string())
-        } else {
-            std::env::var("CUSTODY_TREASURY_USDT_ATA")
-                .unwrap_or_else(|_| "DjmHU8he415YqSNwnQobhGNX6cmj7ao6uZ64pRtBXPZb".to_string())
-        };
-        let treasury_ata = Pubkey::from_str(&treasury_ata_env).map_err(|e| {
-            ServiceError::Validation(format!("Invalid treasury ATA in env: {}", e))
-        })?;
-
-        let user_dest_ata = get_associated_token_address(&user_dest_pubkey, &mint_pubkey);
-
-        let spl_token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
-        let spl_associated_token_program_id = Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
-
-        let rpc = self.rpc_client.clone();
-        let admin_keypair = self.admin_keypair.clone();
-
-        let rpc_res = tokio::task::spawn_blocking(move || {
-            let account_exists = rpc.get_account(&user_dest_ata).is_ok();
-            
-            let mut instructions = Vec::new();
-            if !account_exists {
-                let create_ata_ix = solana_sdk::instruction::Instruction {
-                    program_id: spl_associated_token_program_id,
-                    accounts: vec![
-                        solana_sdk::instruction::AccountMeta::new(admin_keypair.pubkey(), true),
-                        solana_sdk::instruction::AccountMeta::new(user_dest_ata, false),
-                        solana_sdk::instruction::AccountMeta::new_readonly(user_dest_pubkey, false),
-                        solana_sdk::instruction::AccountMeta::new_readonly(mint_pubkey, false),
-                        solana_sdk::instruction::AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
-                        solana_sdk::instruction::AccountMeta::new_readonly(spl_token_program_id, false),
-                    ],
-                    data: vec![],
-                };
-                instructions.push(create_ata_ix);
-            }
-
-            let mut transfer_data = [0u8; 9];
-            transfer_data[0] = 3;
-            transfer_data[1..9].copy_from_slice(&amount_base_units.to_le_bytes());
-
-            let transfer_ix = solana_sdk::instruction::Instruction {
-                program_id: spl_token_program_id,
-                accounts: vec![
-                    solana_sdk::instruction::AccountMeta::new(treasury_ata, false),
-                    solana_sdk::instruction::AccountMeta::new(user_dest_ata, false),
-                    solana_sdk::instruction::AccountMeta::new(admin_keypair.pubkey(), true),
-                ],
-                data: transfer_data.to_vec(),
-            };
-            instructions.push(transfer_ix);
-
-            let transaction = solana_sdk::transaction::Transaction::new_with_payer(
-                &instructions,
-                Some(&admin_keypair.pubkey()),
-            );
-
-            let blockhash = rpc.get_latest_blockhash()?;
-            let mut tx = transaction;
-            tx.sign(&[&*admin_keypair], blockhash);
-
-            let sig = rpc.send_and_confirm_transaction(&tx)?;
-            Ok::<String, solana_client::client_error::ClientError>(sig.to_string())
-        })
-        .await;
-
-        match rpc_res {
-            Ok(Ok(sig)) => {
-                self.repository
-                    .update_transaction_status_and_hash(tx_id, "SUCCESS", Some(sig.clone()))
-                    .await?;
-                tracing::info!("On-chain withdrawal transfer successful! Tx: {}", sig);
-                Ok((sig, updated_account.balance))
-            }
-            Ok(Err(e)) => {
-                let err_msg = format!("Solana RPC transfer failed: {:?}", e);
-                tracing::error!("{}", err_msg);
-                self.repository
-                    .revert_withdrawal(user_id, asset, amount, tx_id, &err_msg)
-                    .await?;
-                Err(ServiceError::Validation(err_msg))
-            }
-            Err(e) => {
-                let err_msg = format!("Task execution failed: {:?}", e);
-                tracing::error!("{}", err_msg);
-                self.repository
-                    .revert_withdrawal(user_id, asset, amount, tx_id, &err_msg)
-                    .await?;
-                Err(ServiceError::Validation(err_msg))
-            }
+        #[derive(serde::Serialize)]
+        struct KafkaWithdrawalRequest {
+            pub tx_id: Uuid,
+            pub user_id: Uuid,
+            pub asset: String,
+            pub amount: String,
+            pub destination_address: String,
         }
+
+        let event = KafkaWithdrawalRequest {
+            tx_id,
+            user_id,
+            asset: asset.to_string(),
+            amount: amount.to_string(),
+            destination_address: destination_address.to_string(),
+        };
+
+        let payload = serde_json::to_vec(&event).map_err(|e| {
+            ServiceError::Validation(format!("Failed to serialize withdrawal event: {}", e))
+        })?;
+
+        let key = tx_id.to_string();
+
+        self.producer
+            .send(
+                FutureRecord::to("withdrawal-requests")
+                    .payload(&payload)
+                    .key(key.as_bytes()),
+                Duration::from_secs(5),
+            )
+            .await
+            .map_err(|(e, _)| {
+                ServiceError::Validation(format!("Failed to send withdrawal to Kafka: {}", e))
+            })?;
+
+        Ok((tx_id.to_string(), updated_account.balance))
     }
 }
 
