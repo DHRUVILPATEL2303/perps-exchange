@@ -4,4 +4,8 @@ target/
 .vscode/
 .DS_Store
 custody-test-frontend/
+scratch/
+node_modules/
+package-lock.json
+package.json
 

@@ -97,18 +97,18 @@ async fn main() -> Result<()> {
     let admin_keypair = get_or_create_keypair("/app/configs/custody-admin-keypair.json", "Admin")?;
     let program_id = Pubkey::from_str(
         &std::env::var("CUSTODY_PROGRAM_ID")
-            .unwrap_or_else(|_| "5Kah8xwrdYfaSLoAAjsbbrpdJJXroiiYmHvduvpgeAEp".to_string()),
+            .unwrap_or_else(|_| "2ayuWXRGujMmex2yJ4uoyMiFi1PUDU6yyhX9QAUJoVWL".to_string()),
     )?;
 
-    let (state_pda, bump) = Pubkey::find_program_address(&[b"custody_state_v2"], &program_id);
+    let (state_pda, bump) = Pubkey::find_program_address(&[b"custody_state_v8"], &program_id);
     tracing::info!("Derived State PDA: {}, bump: {}", state_pda, bump);
 
     let treasury_usdc_str = std::env::var("CUSTODY_TREASURY_USDC_ATA")
-        .unwrap_or_else(|_| "C1fj5ryHHiTsoknjjC9YRmsSvcFNa6f2H1MZeMatmDX5".to_string());
+        .unwrap_or_else(|_| "7zCsbfCpT13QzF9KCKbfvJHsxPyYwv1s7kJ6ZhXtrVsC".to_string());
     let treasury_usdc = Pubkey::from_str(&treasury_usdc_str)?;
 
     let treasury_usdt_str = std::env::var("CUSTODY_TREASURY_USDT_ATA")
-        .unwrap_or_else(|_| "FbRXL78sGoqmoaBPSDWysxerbWKf9icdfmdiHGiJMEAN".to_string());
+        .unwrap_or_else(|_| "DjmHU8he415YqSNwnQobhGNX6cmj7ao6uZ64pRtBXPZb".to_string());
     let treasury_usdt = Pubkey::from_str(&treasury_usdt_str)?;
 
     tracing::info!("Ensuring contract state is initialized...");
@@ -365,14 +365,15 @@ async fn trigger_onchain_sweep(
 
     let program_id = state.program_id;
     let admin_keypair = state.admin_keypair.clone();
-    let (state_pda, _) = Pubkey::find_program_address(&[b"custody_state_v2"], &program_id);
+    let (state_pda, _) = Pubkey::find_program_address(&[b"custody_state_v8"], &program_id);
 
-    let treasury_ata_str = std::env::var(if asset == "USDC" {
-        "CUSTODY_TREASURY_USDC_ATA"
+    let treasury_ata_str = if asset == "USDC" {
+        std::env::var("CUSTODY_TREASURY_USDC_ATA")
+            .unwrap_or_else(|_| "7zCsbfCpT13QzF9KCKbfvJHsxPyYwv1s7kJ6ZhXtrVsC".to_string())
     } else {
-        "CUSTODY_TREASURY_USDT_ATA"
-    })
-    .unwrap_or_else(|_| "C1fj5ryHHiTsoknjjC9YRmsSvcFNa6f2H1MZeMatmDX5".to_string());
+        std::env::var("CUSTODY_TREASURY_USDT_ATA")
+            .unwrap_or_else(|_| "DjmHU8he415YqSNwnQobhGNX6cmj7ao6uZ64pRtBXPZb".to_string())
+    };
     let treasury_ata = Pubkey::from_str(&treasury_ata_str)?;
 
     let spl_token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")?;

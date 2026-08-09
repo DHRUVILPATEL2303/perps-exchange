@@ -513,6 +513,7 @@ impl AccountRepository for PostgresAccountRepository {
         .fetch_one(&mut *tx)
         .await?;
 
+        let err_truncated = error_msg.chars().take(128).collect::<String>();
         sqlx::query(
             r#"
             UPDATE transactions
@@ -520,7 +521,7 @@ impl AccountRepository for PostgresAccountRepository {
             WHERE id = $2
             "#,
         )
-        .bind(error_msg)
+        .bind(err_truncated)
         .bind(tx_id)
         .execute(&mut *tx)
         .await?;

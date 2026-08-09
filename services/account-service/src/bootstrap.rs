@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tonic::transport::Server;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::signature::Keypair;
+use solana_sdk::signer::Signer;
 
 pub async fn run() -> Result<()> {
     let config = AppConfig::load("account-service").expect("Failed to load config");
@@ -57,6 +58,12 @@ pub async fn run() -> Result<()> {
     let keypair_path = std::env::var("CUSTODY_ADMIN_KEYPAIR_PATH")
         .unwrap_or_else(|_| "/app/configs/custody-admin-keypair.json".to_string());
     let admin_keypair = Arc::new(load_keypair(&keypair_path).expect("Failed to load admin keypair"));
+
+    let derived_usdc = get_associated_token_address(&admin_keypair.pubkey(), &solana_sdk::pubkey::Pubkey::from_str_const("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"));
+    let derived_usdt = get_associated_token_address(&admin_keypair.pubkey(), &solana_sdk::pubkey::Pubkey::from_str_const("EJwZeg1u717JhEv6YoRrt8A6gGTLrmKWJxgB7P15fTo3"));
+    tracing::info!("!!! ADMIN PUBKEY: {}", admin_keypair.pubkey());
+    tracing::info!("!!! DERIVED USDC TREASURY ATA: {}", derived_usdc);
+    tracing::info!("!!! DERIVED USDT TREASURY ATA: {}", derived_usdt);
 
     let repository = Arc::new(PostgresAccountRepository::new(db.pool().clone()));
     let account_service = Arc::new(AccountService::new(repository, rpc_client, admin_keypair));
@@ -125,4 +132,19 @@ fn load_keypair(path: &str) -> std::io::Result<Keypair> {
     let keypair = Keypair::from_bytes(&bytes)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     Ok(keypair)
+}
+
+fn get_associated_token_address(wallet_address: &solana_sdk::pubkey::Pubkey, token_mint_address: &solana_sdk::pubkey::Pubkey) -> solana_sdk::pubkey::Pubkey {
+    let spl_associated_token_program_id = solana_sdk::pubkey::Pubkey::from_str_const("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+    let spl_token_program_id = solana_sdk::pubkey::Pubkey::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+    
+    let (ata, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[
+            wallet_address.as_ref(),
+            spl_token_program_id.as_ref(),
+            token_mint_address.as_ref(),
+        ],
+        &spl_associated_token_program_id,
+    );
+    ata
 }

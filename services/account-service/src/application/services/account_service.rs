@@ -108,7 +108,7 @@ impl AccountUseCase for AccountService {
             return Ok(custody);
         }
 
-        let program_id = Pubkey::from_str("5Kah8xwrdYfaSLoAAjsbbrpdJJXroiiYmHvduvpgeAEp").unwrap();
+        let program_id = Pubkey::from_str("2ayuWXRGujMmex2yJ4uoyMiFi1PUDU6yyhX9QAUJoVWL").unwrap();
         let (pda, _) = Pubkey::find_program_address(
             &[b"user_deposit", user_id.as_bytes()],
             &program_id,
@@ -163,10 +163,10 @@ impl AccountUseCase for AccountService {
 
         let treasury_ata_env = if asset == "USDC" {
             std::env::var("CUSTODY_TREASURY_USDC_ATA")
-                .unwrap_or_else(|_| "C1fj5ryHHiTsoknjjC9YRmsSvcFNa6f2H1MZeMatmDX5".to_string())
+                .unwrap_or_else(|_| "7zCsbfCpT13QzF9KCKbfvJHsxPyYwv1s7kJ6ZhXtrVsC".to_string())
         } else {
             std::env::var("CUSTODY_TREASURY_USDT_ATA")
-                .unwrap_or_else(|_| "FbRXL78sGoqmoaBPSDWysxerbWKf9icdfmdiHGiJMEAN".to_string())
+                .unwrap_or_else(|_| "DjmHU8he415YqSNwnQobhGNX6cmj7ao6uZ64pRtBXPZb".to_string())
         };
         let treasury_ata = Pubkey::from_str(&treasury_ata_env).map_err(|e| {
             ServiceError::Validation(format!("Invalid treasury ATA in env: {}", e))

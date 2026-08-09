@@ -20,7 +20,7 @@ const SPL_TOKEN_PROGRAM_ID: [u8; 32] = [
     95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
 ];
 
-const STATE_SEED: &[u8] = b"custody_state_v2";
+const STATE_SEED: &[u8] = b"custody_state_v8";
 
 pub fn process_instruction(
     program_id: &Pubkey,
@@ -109,7 +109,7 @@ fn initialize(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> Pro
     state_data[32..64].copy_from_slice(usdc_treasury.as_ref());
     state_data[64..96].copy_from_slice(usdt_treasury.as_ref());
 
-    msg!("Exchange custody initialized successfully.");
+    log!("Exchange custody initialized successfully.");
     Ok(())
 }
 
@@ -133,11 +133,14 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
 
     let (expected_state, _) = find_program_address(&[STATE_SEED], program_id);
     if state_account.key() != &expected_state {
+        log!("Error: State account mismatch");
+
         return Err(ProgramError::InvalidAccountData);
     }
 
     let state_data = state_account.try_borrow_data()?;
     if state_data.len() < 96 {
+        log!("Error: State data length too short");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -154,6 +157,7 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
     let stored_usdt_treasury = Pubkey::from(usdt_treasury_bytes);
 
     if admin_account.key() != &stored_admin {
+        log!("Error: Admin account mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -167,12 +171,14 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
         find_program_address(&[b"user_deposit", &user_uuid as &[u8]], program_id);
 
     if user_pda_authority.key() != &expected_pda {
+        log!("Error: User PDA authority mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
 
     let (token_mint, amount) = {
         let pda_token_data = user_pda_token.try_borrow_data()?;
         if pda_token_data.len() < 72 {
+            log!("Error: User PDA token account uninitialized or too small");
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -185,6 +191,7 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
         let token_owner = Pubkey::from(owner_bytes);
 
         if token_owner != expected_pda {
+            log!("Error: User token account owner mismatch");
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -196,13 +203,14 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
     };
 
     if amount == 0 {
-        msg!("No funds to sweep.");
+        log!("No funds to sweep.");
         return Ok(());
     }
 
     {
         let treasury_token_data = treasury_token.try_borrow_data()?;
         if treasury_token_data.len() < 64 {
+            log!("Error: Treasury token account uninitialized or too small");
             return Err(ProgramError::InvalidAccountData);
         }
 
@@ -213,14 +221,15 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
         if treasury_token.key() != &stored_usdc_treasury
             && treasury_token.key() != &stored_usdt_treasury
         {
+            log!("Error: Treasury token mismatch. Does not match USDC or USDT treasury.");
             return Err(ProgramError::InvalidAccountData);
         }
 
         if token_mint != treasury_mint {
+            log!("Error: Token mint mismatch");
             return Err(ProgramError::InvalidAccountData);
         }
     }
-
 
     let mut transfer_data = [0u8; 9];
     transfer_data[0] = 3;
@@ -241,7 +250,6 @@ fn sweep(program_id: &Pubkey, accounts: &[AccountInfo], data: &[u8]) -> ProgramR
         AccountMeta::new(&*treasury_token.key(), true, false),
         AccountMeta::new(user_pda_authority.key(), false, true),
     ];
-
 
     let sweep_ix = Instruction {
         program_id: token_program.key(),
