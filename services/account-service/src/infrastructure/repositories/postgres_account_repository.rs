@@ -208,6 +208,20 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<Account, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
+        if let Some(ref hash) = tx_hash {
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM transactions WHERE tx_hash = $1)"
+            )
+            .bind(hash)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if exists {
+                tx.rollback().await?;
+                return Err(RepositoryError::Duplicate);
+            }
+        }
+
         let account = sqlx::query_as::<_, Account>(
             r#"
             SELECT id, user_id, asset, balance, frozen, created_at, updated_at
