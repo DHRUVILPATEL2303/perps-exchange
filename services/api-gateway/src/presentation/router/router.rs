@@ -3,6 +3,7 @@ use crate::presentation::handlers::{
     market_handler::{list_markets, get_candles, create_market},
     trading_handler::{cancel_order, get_positions, place_order, get_open_orders, get_trade_history, adjust_position_margin},
     ws_handler::ws_index,
+    auth_handler::{get_challenge, login},
 };
 use crate::presentation::routes::health::health_routes;
 use actix_web::web;
@@ -10,6 +11,8 @@ use actix_web::web;
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/v1")
+            .route("/auth/challenge", web::post().to(get_challenge))
+            .route("/auth/login", web::post().to(login))
             .route("/markets", web::get().to(list_markets))
             .route("/markets", web::post().to(create_market))
             .route("/markets/{symbol}/candles", web::get().to(get_candles))

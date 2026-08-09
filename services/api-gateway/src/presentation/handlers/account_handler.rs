@@ -1,6 +1,7 @@
 use actix_web::web::{Data, Path, Json, Query};
 use actix_web::HttpResponse;
 use crate::state::AppState;
+use crate::presentation::handlers::auth_handler::AuthenticatedUser;
 use proto::account::{
     GetBalanceRequest, AdjustMarginRequest, GetTransactionHistoryRequest, GetDepositAddressRequest,
     WithdrawRequest,
@@ -27,8 +28,16 @@ pub struct BalanceQuery {
     pub asset: Option<String>,
 }
 
-pub async fn get_balance(state: Data<AppState>, path: Path<Uuid>, query: Query<BalanceQuery>) -> HttpResponse {
+pub async fn get_balance(
+    state: Data<AppState>,
+    path: Path<Uuid>,
+    query: Query<BalanceQuery>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
     let user_id = path.into_inner();
+    if user.user_id != user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
     let mut client = state.account_client.clone();
     let asset = query.asset.clone().unwrap_or_else(|| "USDC".to_string());
     
@@ -42,8 +51,15 @@ pub async fn get_balance(state: Data<AppState>, path: Path<Uuid>, query: Query<B
     }
 }
 
-pub async fn deposit_funds(state: Data<AppState>, body: Json<HTTPDepositRequest>) -> HttpResponse {
+pub async fn deposit_funds(
+    state: Data<AppState>,
+    body: Json<HTTPDepositRequest>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
     let req = body.into_inner();
+    if user.user_id != req.user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
     let mut client = state.account_client.clone();
     let grpc_req = AdjustMarginRequest {
         user_id: req.user_id.to_string(),
@@ -56,8 +72,15 @@ pub async fn deposit_funds(state: Data<AppState>, body: Json<HTTPDepositRequest>
     }
 }
 
-pub async fn withdraw_funds(state: Data<AppState>, body: Json<HTTPWithdrawRequest>) -> HttpResponse {
+pub async fn withdraw_funds(
+    state: Data<AppState>,
+    body: Json<HTTPWithdrawRequest>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
     let req = body.into_inner();
+    if user.user_id != req.user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
     let mut client = state.account_client.clone();
     let grpc_req = WithdrawRequest {
         user_id: req.user_id.to_string(),
@@ -71,8 +94,15 @@ pub async fn withdraw_funds(state: Data<AppState>, body: Json<HTTPWithdrawReques
     }
 }
 
-pub async fn get_transaction_history(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
+pub async fn get_transaction_history(
+    state: Data<AppState>,
+    path: Path<Uuid>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
     let user_id = path.into_inner();
+    if user.user_id != user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
     let mut client = state.account_client.clone();
     let grpc_req = GetTransactionHistoryRequest {
         user_id: user_id.to_string(),
@@ -83,8 +113,15 @@ pub async fn get_transaction_history(state: Data<AppState>, path: Path<Uuid>) ->
     }
 }
 
-pub async fn get_deposit_address(state: Data<AppState>, path: Path<Uuid>) -> HttpResponse {
+pub async fn get_deposit_address(
+    state: Data<AppState>,
+    path: Path<Uuid>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
     let user_id = path.into_inner();
+    if user.user_id != user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
     let mut client = state.account_client.clone();
     let grpc_req = GetDepositAddressRequest {
         user_id: user_id.to_string(),

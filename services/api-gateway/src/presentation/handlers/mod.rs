@@ -5,3 +5,4 @@ pub mod trading_handler;
 pub mod ws_handler;
 pub mod ws_router;
 pub mod wt_server;
+pub mod auth_handler;

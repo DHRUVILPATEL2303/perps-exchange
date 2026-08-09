@@ -27,6 +27,9 @@ rdkafka.workspace=true
 wtransport.workspace=true
 anyhow.workspace=true
 database = { path = "../../crates/database" }
+jsonwebtoken = "9"
+ed25519-dalek = "2.1"
+bs58 = "0.5"
 
 telemetry = { path = "../../crates/telemetry" }
 config = { path = "../../crates/config" }
