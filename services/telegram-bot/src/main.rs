@@ -52,6 +52,14 @@ enum Command {
     Unlink,
     #[command(description = "get support contact details.")]
     Support,
+    #[command(description = "check your exchange balances.")]
+    Balance,
+    #[command(description = "view your active perp positions.")]
+    Positions,
+    #[command(description = "view your trade execution history.")]
+    Trades,
+    #[command(description = "view your account transaction history (deposits/withdrawals).")]
+    History,
 }
 
 type AlertMap = Arc<Mutex<HashMap<String, Vec<Alert>>>>;
@@ -130,6 +138,10 @@ async fn main() {
         teloxide::types::BotCommand::new("link", "Link your exchange account"),
         teloxide::types::BotCommand::new("unlink", "Unlink your exchange account"),
         teloxide::types::BotCommand::new("support", "Contact support"),
+        teloxide::types::BotCommand::new("balance", "Check your balances"),
+        teloxide::types::BotCommand::new("positions", "View active perp positions"),
+        teloxide::types::BotCommand::new("trades", "View trade history"),
+        teloxide::types::BotCommand::new("history", "View deposit/withdrawal history"),
     ];
     let _ = bot.set_my_commands(bot_commands).await;
 
@@ -313,6 +325,305 @@ async fn handle_command(
                 "⚙️ **Support & Help**:\n\nIf you have any questions or issues, feel free to reach out:\n\n📧 Email: support@perpsexchange.io\n💬 Telegram Support: @perpsexchange_support"
             )
             .await?;
+        }
+        Command::Balance => {
+            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
+                .bind(msg.chat.id.0)
+                .fetch_optional(&db)
+                .await 
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let account_service_url = std::env::var("ACCOUNT_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50053".to_string());
+            
+            let mut client = match proto::account::account_service_client::AccountServiceClient::connect(account_service_url).await {
+                Ok(c) => c,
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to connect to Account Service. Please try again later.").await?;
+                    return Ok(());
+                }
+            };
+
+            let usdc_res = client.get_balance(proto::account::GetBalanceRequest {
+                user_id: user_id.clone(),
+                asset: "USDC".to_string(),
+            }).await;
+
+            let usdt_res = client.get_balance(proto::account::GetBalanceRequest {
+                user_id: user_id.clone(),
+                asset: "USDT".to_string(),
+            }).await;
+
+            fn fmt_amount(s: &str) -> String {
+                rust_decimal::Decimal::from_str(s)
+                    .map(|d| format!("{:.4}", d))
+                    .unwrap_or_else(|_| s.to_string())
+            }
+
+            let mut response_text = String::from("💰 *Your Exchange Balances*\n\n");
+
+            match usdc_res {
+                Ok(r) => {
+                    let res = r.into_inner();
+                    let avail = fmt_amount(&res.available_balance);
+                    let locked = fmt_amount(&res.locked_balance);
+                    let total = rust_decimal::Decimal::from_str(&res.available_balance).unwrap_or_default()
+                        + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
+                    response_text.push_str(&format!(
+                        "*USDC*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
+                        format!("{:.4}", total), avail, locked
+                    ));
+                }
+                Err(_) => response_text.push_str("*USDC*: \u{274c} Unavailable\n\n"),
+            }
+
+            match usdt_res {
+                Ok(r) => {
+                    let res = r.into_inner();
+                    let avail = fmt_amount(&res.available_balance);
+                    let locked = fmt_amount(&res.locked_balance);
+                    let total = rust_decimal::Decimal::from_str(&res.available_balance).unwrap_or_default()
+                        + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
+                    response_text.push_str(&format!(
+                        "*USDT*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
+                        format!("{:.4}", total), avail, locked
+                    ));
+                }
+                Err(_) => response_text.push_str("*USDT*: \u{274c} Unavailable\n\n"),
+            }
+
+            bot.send_message(msg.chat.id, response_text)
+                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .await?;
+        }
+        Command::Positions => {
+            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
+                .bind(msg.chat.id.0)
+                .fetch_optional(&db)
+                .await 
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let trading_service_url = std::env::var("TRADING_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50052".to_string());
+            
+            let mut client = match proto::trading::trading_service_client::TradingServiceClient::connect(trading_service_url).await {
+                Ok(c) => c,
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to connect to Trading Service. Please try again later.").await?;
+                    return Ok(());
+                }
+            };
+
+            let res = client.get_postions(proto::trading::GetPostionsRequest {
+                user_id: user_id.clone(),
+            }).await;
+
+            match res {
+                Ok(r) => {
+                    let positions = r.into_inner().positions;
+                    if positions.is_empty() {
+                        bot.send_message(msg.chat.id, "📊 **No Active Perp Positions**").await?;
+                    } else {
+                        let mut response_text = "📊 **Your Active Perp Positions**:\n\n".to_string();
+                        for pos in positions {
+                            response_text.push_str(&format!(
+                                "• **{}** ({})\n  Size: **{}**\n  Entry Price: **{}**\n  Leverage: **{}x** ({})\n  Unrealized PnL: **{}**\n\n",
+                                pos.symbol, pos.side, pos.size, pos.entry_price, pos.leverage, pos.margin_mode, pos.unrealized_pnl
+                            ));
+                        }
+                        bot.send_message(msg.chat.id, response_text).await?;
+                    }
+                }
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve positions.").await?;
+                }
+            }
+        }
+        Command::Trades => {
+            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
+                .bind(msg.chat.id.0)
+                .fetch_optional(&db)
+                .await 
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let trading_service_url = std::env::var("TRADING_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50052".to_string());
+            
+            let mut client = match proto::trading::trading_service_client::TradingServiceClient::connect(trading_service_url).await {
+                Ok(c) => c,
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to connect to Trading Service. Please try again later.").await?;
+                    return Ok(());
+                }
+            };
+
+            let res = client.get_trade_history(proto::trading::GetTradeHistoryRequest {
+                user_id: user_id.clone(),
+            }).await;
+
+            match res {
+                Ok(r) => {
+                    let trades = r.into_inner().trades;
+                    if trades.is_empty() {
+                        bot.send_message(msg.chat.id, "📝 **No Trade History Found**").await?;
+                    } else {
+                        let mut response_text = "📝 **Your Trade History (Last 10)**:\n\n".to_string();
+                        let limit = trades.len().min(10);
+                        for i in 0..limit {
+                            let t = &trades[trades.len() - 1 - i];
+                            response_text.push_str(&format!(
+                                "• **{}** {} at **{}**\n  Qty: **{}**\n  Fee: **{}**\n  Time: {}\n\n",
+                                t.symbol, t.side, t.price, t.quantity, t.fee, t.executed_at
+                            ));
+                        }
+                        bot.send_message(msg.chat.id, response_text).await?;
+                    }
+                }
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve trade history.").await?;
+                }
+            }
+        }
+        Command::History => {
+            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
+                .bind(msg.chat.id.0)
+                .fetch_optional(&db)
+                .await 
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let account_service_url = std::env::var("ACCOUNT_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50053".to_string());
+            
+            let mut client = match proto::account::account_service_client::AccountServiceClient::connect(account_service_url).await {
+                Ok(c) => c,
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to connect to Account Service. Please try again later.").await?;
+                    return Ok(());
+                }
+            };
+
+            let res = client.get_transaction_history(proto::account::GetTransactionHistoryRequest {
+                user_id: user_id.clone(),
+            }).await;
+
+            match res {
+                Ok(r) => {
+                    let txs = r.into_inner().transactions;
+                    if txs.is_empty() {
+                        bot.send_message(msg.chat.id, "📜 No Transaction History Found").await?;
+                    } else {
+                        fn fmt_status(status: &str) -> &str {
+                            match status {
+                                "SUCCESS" => "✅ Success",
+                                "FAILED"  => "❌ Failed",
+                                "PENDING" => "⏳ Pending",
+                                other     => other,
+                            }
+                        }
+                        fn fmt_tx(tx_hash: &str) -> String {
+                            if tx_hash.is_empty() || tx_hash.starts_with("ERROR") {
+                                "—".to_string()
+                            } else if tx_hash.len() > 16 {
+                                format!("{}…{}", &tx_hash[..8], &tx_hash[tx_hash.len()-8..])
+                            } else {
+                                tx_hash.to_string()
+                            }
+                        }
+                        fn fmt_ts(ts: &str) -> String {
+                            ts.get(..16).unwrap_or(ts).replace('T', " ").to_string()
+                        }
+                        fn fmt_amt(amount: &str) -> String {
+                            rust_decimal::Decimal::from_str(amount)
+                                .map(|d| format!("{:.4}", d))
+                                .unwrap_or_else(|_| amount.to_string())
+                        }
+                        fn tx_icon(tx_type: &str) -> &str {
+                            match tx_type {
+                                "DEPOSIT"    => "⬇️",
+                                "WITHDRAWAL" => "⬆️",
+                                _            => "↔️",
+                            }
+                        }
+
+                        let mut response_text = "📜 Account History (Last 10)\n".to_string();
+                        response_text.push_str("──────────────────────\n");
+                        let limit = txs.len().min(10);
+                        for i in 0..limit {
+                            let tx = &txs[txs.len() - 1 - i];
+                            response_text.push_str(&format!(
+                                "{} {} {}  {}\n🕐 {}\n🔗 {}\n\n",
+                                tx_icon(&tx.transaction_type),
+                                tx.transaction_type,
+                                fmt_amt(&tx.amount),
+                                tx.asset,
+                                fmt_ts(&tx.created_at),
+                                fmt_tx(&tx.tx_hash),
+                            ));
+                            response_text.push_str(&format!("   {}\n──────────────────────\n", fmt_status(&tx.status)));
+                        }
+                        bot.send_message(msg.chat.id, response_text).await?;
+                    }
+                }
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve transaction history.").await?;
+                }
+            }
         }
     }
     Ok(())

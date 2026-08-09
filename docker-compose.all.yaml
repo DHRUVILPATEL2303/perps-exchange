@@ -368,12 +368,18 @@ services:
       - DATABASE_URL=postgres://postgres:postgres@pgbouncer:6432/perps_accounts
       - REDIS__HOST=redis
       - REDIS__PORT=6379
+      - ACCOUNT_SERVICE_URL=http://account-service:50053
+      - TRADING_SERVICE_URL=http://trading-service:50052
     depends_on:
       pgbouncer:
         condition: service_started
       kafka:
         condition: service_started
       redis:
+        condition: service_started
+      account-service:
+        condition: service_started
+      trading-service:
         condition: service_started
 
   blockchain-listener:

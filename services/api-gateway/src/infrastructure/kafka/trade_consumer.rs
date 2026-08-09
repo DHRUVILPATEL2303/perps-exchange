@@ -86,10 +86,17 @@ pub async fn run_trade_consumer(state: AppState) -> Result<()> {
                             false
                         };
 
+                        let price_formatted = rust_decimal::Decimal::from_str(&event.price)
+                            .map(|d| format!("{:.2}", d))
+                            .unwrap_or_else(|_| event.price.clone());
+                        let qty_formatted = rust_decimal::Decimal::from_str(&event.quantity)
+                            .map(|d| format!("{:.2}", d))
+                            .unwrap_or_else(|_| event.quantity.clone());
+
                         let maker_side = if event.taker_side == "BUY" { "SELL" } else { "BUY" };
                         let message = format!(
                             "🟢 **Order Executed (Maker)**\nSymbol: {}\nSide: {}\nPrice: {}\nQty: {}",
-                            event.symbol, maker_side, event.price, event.quantity
+                            event.symbol, maker_side, price_formatted, qty_formatted
                         );
                         let notif = UserNotification {
                             user_id: event.maker_user_id.clone(),
@@ -127,7 +134,7 @@ pub async fn run_trade_consumer(state: AppState) -> Result<()> {
 
                         let message = format!(
                             "🟢 **Order Executed (Taker)**\nSymbol: {}\nSide: {}\nPrice: {}\nQty: {}",
-                            event.symbol, event.taker_side, event.price, event.quantity
+                            event.symbol, event.taker_side, price_formatted, qty_formatted
                         );
                         let notif = UserNotification {
                             user_id: event.taker_user_id.clone(),

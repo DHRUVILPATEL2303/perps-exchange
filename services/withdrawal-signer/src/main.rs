@@ -237,11 +237,14 @@ async fn revert_withdrawal(
         .await?;
     }
 
-    sqlx::query("UPDATE transactions SET status = 'FAILED', tx_hash = $1 WHERE id = $2")
-        .bind(format!("ERROR: {}", error_msg))
-        .bind(tx_id)
-        .execute(&mut *tx)
-        .await?;
+    let err_truncated = error_msg.chars().take(512).collect::<String>();
+    sqlx::query(
+        "UPDATE transactions SET status = 'FAILED', tx_hash = NULL, error_message = $1 WHERE id = $2"
+    )
+    .bind(err_truncated)
+    .bind(tx_id)
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
     Ok(())

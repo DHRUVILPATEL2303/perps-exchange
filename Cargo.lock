@@ -10106,6 +10106,7 @@ dependencies = [
  "anyhow",
  "config 0.1.0",
  "futures-util",
+ "proto",
  "rdkafka",
  "redis",
  "rust_decimal",
@@ -10115,6 +10116,7 @@ dependencies = [
  "telemetry",
  "teloxide",
  "tokio",
+ "tonic 0.14.6",
  "tracing",
  "uuid",
 ]
