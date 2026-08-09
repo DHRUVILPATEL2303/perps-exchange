@@ -46,6 +46,12 @@ enum Command {
     Clear,
     #[command(description = "link your exchange UUID: /register <user_id>.")]
     Register(String),
+    #[command(description = "get instructions on linking your exchange account.")]
+    Link,
+    #[command(description = "unlink your exchange account.")]
+    Unlink,
+    #[command(description = "get support contact details.")]
+    Support,
 }
 
 type AlertMap = Arc<Mutex<HashMap<String, Vec<Alert>>>>;
@@ -111,6 +117,21 @@ async fn main() {
                 },
             )),
     );
+
+    let bot_commands = vec![
+        teloxide::types::BotCommand::new("help", "Display help message"),
+        teloxide::types::BotCommand::new("start", "Launch the Mini App"),
+        teloxide::types::BotCommand::new(
+            "alert",
+            "Set a price alert: /alert <symbol> <direction> <price>",
+        ),
+        teloxide::types::BotCommand::new("list", "List active price alerts"),
+        teloxide::types::BotCommand::new("clear", "Clear all price alerts"),
+        teloxide::types::BotCommand::new("link", "Link your exchange account"),
+        teloxide::types::BotCommand::new("unlink", "Unlink your exchange account"),
+        teloxide::types::BotCommand::new("support", "Contact support"),
+    ];
+    let _ = bot.set_my_commands(bot_commands).await;
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()
@@ -261,6 +282,37 @@ async fn handle_command(
             }
             bot.send_message(msg.chat.id, "All your alerts have been cleared.")
                 .await?;
+        }
+        Command::Link => {
+            bot.send_message(
+                msg.chat.id,
+                "🔗 **How to link your exchange account**:\n\n1. Sign in to the web trading platform.\n2. Go to settings -> Telegram Bot linkage.\n3. Click the secure deep link to verify and automatically connect your Telegram chat."
+            )
+            .await?;
+        }
+        Command::Unlink => {
+            let query_res =
+                sqlx::query("DELETE FROM telegram_user_mappings WHERE telegram_chat_id = $1")
+                    .bind(msg.chat.id.0)
+                    .execute(&db)
+                    .await;
+
+            match query_res {
+                Ok(_) => {
+                    bot.send_message(msg.chat.id, "Your Telegram account has been successfully unlinked from the exchange user UUID.").await?;
+                }
+                Err(e) => {
+                    bot.send_message(msg.chat.id, format!("Failed to unlink: {:?}", e))
+                        .await?;
+                }
+            }
+        }
+        Command::Support => {
+            bot.send_message(
+                msg.chat.id,
+                "⚙️ **Support & Help**:\n\nIf you have any questions or issues, feel free to reach out:\n\n📧 Email: support@perpsexchange.io\n💬 Telegram Support: @perpsexchange_support"
+            )
+            .await?;
         }
     }
     Ok(())

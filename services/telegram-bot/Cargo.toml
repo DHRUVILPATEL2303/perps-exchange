@@ -24,3 +24,5 @@ sqlx = { workspace = true }
 # Internal workspace crates
 config = { path = "../../crates/config" }
 telemetry = { path = "../../crates/telemetry" }
+proto = { path = "../../crates/proto" }
+tonic = { workspace = true }

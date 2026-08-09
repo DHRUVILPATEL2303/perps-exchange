@@ -181,7 +181,7 @@ pub async fn get_telegram_token(
     state: Data<AppState>,
     user: AuthenticatedUser,
 ) -> HttpResponse {
-    let token = Uuid::new_v4().to_string();
+    let token = Uuid::new_v4().simple().to_string();
     let redis_key = format!("telegram_token:{}", token);
 
     let mut redis_conn = match state.redis_client.get_multiplexed_async_connection().await {
