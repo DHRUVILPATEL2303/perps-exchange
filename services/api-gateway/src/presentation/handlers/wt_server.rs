@@ -4,6 +4,7 @@ use wtransport::{ServerConfig, Identity};
 use wtransport::tls::Sha256DigestFmt;
 use tokio::sync::mpsc;
 use serde::Deserialize;
+use jsonwebtoken;
 use crate::presentation::handlers::ws_router::handle_connection_pubsub;
 
 #[derive(Deserialize)]
@@ -46,6 +47,35 @@ pub async fn run_webtransport_server(redis_client: redis::Client) -> Result<()> 
                     return;
                 }
             };
+
+            let path = session_request.path();
+            let mut token = None;
+            if let Some(pos) = path.find("token=") {
+                let token_part = &path[pos + 6..];
+                if let Some(end) = token_part.find('&') {
+                    token = Some(&token_part[..end]);
+                } else {
+                    token = Some(token_part);
+                }
+            }
+
+            let token = match token {
+                Some(t) => t,
+                None => {
+                    tracing::error!("Missing token query parameter in WebTransport connection request");
+                    return;
+                }
+            };
+
+            let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
+            if jsonwebtoken::decode::<crate::presentation::handlers::auth_handler::Claims>(
+                token,
+                &jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes()),
+                &jsonwebtoken::Validation::default(),
+            ).is_err() {
+                tracing::error!("Invalid or expired token in WebTransport connection request");
+                return;
+            }
 
             let session = match session_request.accept().await {
                 Ok(sess) => sess,
