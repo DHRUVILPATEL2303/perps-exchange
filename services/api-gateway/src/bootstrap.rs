@@ -73,7 +73,7 @@ pub async fn run() -> std::io::Result<()> {
     let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
     let redis_client = redis::Client::open(redis_url).expect("Failed to open Redis client");
 
-    let ws_sessions = Arc::new(Mutex::new(Vec::new()));
+    let ws_sessions = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
     let app_state = Data::new(AppState {
         config: Arc::new(config.clone()),
@@ -90,6 +90,13 @@ pub async fn run() -> std::io::Result<()> {
     tokio::spawn(async move {
         if let Err(e) = run_webtransport_server(redis_for_wt).await {
             tracing::error!("WebTransport Server crashed: {:?}", e);
+        }
+    });
+
+    let state_for_consumer = app_state.get_ref().clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::infrastructure::kafka::trade_consumer::run_trade_consumer(state_for_consumer).await {
+            tracing::error!("Trade Event Consumer crashed: {:?}", e);
         }
     });
 

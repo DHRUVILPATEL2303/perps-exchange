@@ -15,7 +15,7 @@ pub struct AppState {
     pub account_client: AccountServiceClient<Channel>,
     pub trading_clients: Vec<TradingServiceClient<Channel>>,
     pub trading_pool_index: Arc<AtomicUsize>,
-    pub ws_sessions: Arc<Mutex<Vec<actix_ws::Session>>>,
+    pub ws_sessions: Arc<Mutex<std::collections::HashMap<String, Vec<(uuid::Uuid, actix_ws::Session)>>>>,
     pub redis_client: redis::Client,
     pub chart_client: ChartServiceClient<Channel>,
 }

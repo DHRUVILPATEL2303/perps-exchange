@@ -2,15 +2,18 @@ use futures_util::StreamExt;
 use rdkafka::Message as KafkaMessage;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer};
+use redis::AsyncCommands;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use sqlx::Row;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use teloxide::prelude::*;
-use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo};
+use teloxide::types::{ChatId, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo};
 use teloxide::utils::command::BotCommands;
 use tokio::sync::Mutex;
+use uuid::{self, Uuid};
 
 #[derive(Debug, Clone)]
 struct Alert {
@@ -41,6 +44,8 @@ enum Command {
     List,
     #[command(description = "clear all your alerts.")]
     Clear,
+    #[command(description = "link your exchange UUID: /register <user_id>.")]
+    Register(String),
 }
 
 type AlertMap = Arc<Mutex<HashMap<String, Vec<Alert>>>>;
@@ -53,7 +58,20 @@ async fn main() {
     let bot = Bot::from_env();
     let alerts: AlertMap = Arc::new(Mutex::new(HashMap::new()));
 
-    // Spawn the Kafka Price Consumer for Alerts
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://postgres:postgres@localhost:5432/perps_accounts".to_string()
+    });
+
+    let db_pool = sqlx::PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database in telegram-bot");
+
+    let redis_host = std::env::var("REDIS__HOST").unwrap_or_else(|_| "localhost".to_string());
+    let redis_port = std::env::var("REDIS__PORT").unwrap_or_else(|_| "6379".to_string());
+    let redis_url = format!("redis://{}:{}", redis_host, redis_port);
+    let redis_client =
+        redis::Client::open(redis_url).expect("Failed to open Redis client in telegram-bot");
+
     let alerts_clone = alerts.clone();
     let bot_clone = bot.clone();
     tokio::spawn(async move {
@@ -62,11 +80,43 @@ async fn main() {
         }
     });
 
-    Command::repl(bot, move |bot, msg, cmd| {
-        let alerts = alerts.clone();
-        async move { handle_command(bot, msg, cmd, alerts).await }
-    })
-    .await;
+    let db_pool_clone = db_pool.clone();
+    let bot_clone2 = bot.clone();
+    tokio::spawn(async move {
+        if let Err(e) = run_kafka_notification_consumer(bot_clone2, db_pool_clone).await {
+            tracing::error!("Kafka notification consumer crashed: {:?}", e);
+        }
+    });
+
+    let db_pool_clone2 = db_pool.clone();
+    let redis_client_clone = redis_client.clone();
+
+    let handler = Update::filter_message().branch(
+        dptree::entry()
+            .branch(
+                dptree::filter(|msg: Message| {
+                    msg.text().map_or(false, |t| t.starts_with("/start"))
+                })
+                .endpoint(move |bot: Bot, msg: Message| {
+                    let db = db_pool_clone2.clone();
+                    let redis = redis_client_clone.clone();
+                    async move { handle_start_command(bot, msg, db, redis).await }
+                }),
+            )
+            .branch(dptree::entry().filter_command::<Command>().endpoint(
+                move |bot: Bot, msg: Message, cmd: Command| {
+                    let alerts = alerts.clone();
+                    let db = db_pool.clone();
+                    async move { handle_command(bot, msg, cmd, alerts, db).await }
+                },
+            )),
+    );
+
+    Dispatcher::builder(bot, handler)
+        .enable_ctrlc_handler()
+        .build()
+        .dispatch()
+        .await;
 }
 
 async fn handle_command(
@@ -74,6 +124,7 @@ async fn handle_command(
     msg: Message,
     cmd: Command,
     alerts: AlertMap,
+    db: sqlx::Pool<sqlx::Postgres>,
 ) -> ResponseResult<()> {
     match cmd {
         Command::Help => {
@@ -99,8 +150,38 @@ async fn handle_command(
             .reply_markup(keyboard)
             .await?;
         }
+        Command::Register(user_id_str) => {
+            let user_id = match Uuid::parse_str(&user_id_str) {
+                Ok(u) => u,
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "Invalid UUID format! Example: /register 11111111-2222-3333-4444-555555555555").await?;
+                    return Ok(());
+                }
+            };
+
+            let query_res = sqlx::query(
+                r#"
+                INSERT INTO telegram_user_mappings (user_id, telegram_chat_id, created_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET telegram_chat_id = EXCLUDED.telegram_chat_id
+                "#,
+            )
+            .bind(user_id)
+            .bind(msg.chat.id.0)
+            .execute(&db)
+            .await;
+
+            match query_res {
+                Ok(_) => {
+                    bot.send_message(msg.chat.id, "Account successfully linked! You will now receive push notifications on Telegram for order fills when you are offline.").await?;
+                }
+                Err(e) => {
+                    bot.send_message(msg.chat.id, format!("Failed to register: {:?}", e))
+                        .await?;
+                }
+            }
+        }
         Command::Alert(args) => {
-            // Expected args: "BTCUSDT > 65000" or "BTCUSDT < 63000"
             let parts: Vec<&str> = args.split_whitespace().collect();
             if parts.len() != 3 {
                 bot.send_message(msg.chat.id, "Invalid format! Use: /alert <symbol> < > or < > <price>\nExample: /alert BTCUSDT > 65000").await?;
@@ -245,6 +326,152 @@ async fn run_kafka_price_consumer(bot: Bot, alerts: AlertMap) -> anyhow::Result<
             }
         }
     }
+
+    Ok(())
+}
+
+async fn run_kafka_notification_consumer(
+    bot: Bot,
+    db_pool: sqlx::Pool<sqlx::Postgres>,
+) -> anyhow::Result<()> {
+    let brokers = std::env::var("KAFKA_BROKERS").unwrap_or_else(|_| "localhost:9092".to_string());
+
+    let consumer: StreamConsumer = ClientConfig::new()
+        .set("bootstrap.servers", &brokers)
+        .set("group.id", "telegram-bot-notifications-group")
+        .set("auto.offset.reset", "latest")
+        .set("enable.auto.commit", "true")
+        .create()?;
+
+    consumer.subscribe(&["user-notifications"])?;
+    tracing::info!("Telegram Bot notifications consumer subscribed to user-notifications topic.");
+
+    #[derive(Deserialize)]
+    struct UserNotification {
+        pub user_id: String,
+        pub message: String,
+    }
+
+    let mut stream = consumer.stream();
+    while let Some(msg_res) = stream.next().await {
+        if let Ok(msg) = msg_res {
+            if let Some(payload) = KafkaMessage::payload(&msg) {
+                if let Ok(notif) = serde_json::from_slice::<UserNotification>(payload) {
+                    let user_id = match Uuid::parse_str(&notif.user_id) {
+                        Ok(u) => u,
+                        Err(_) => continue,
+                    };
+
+                    let row_opt = sqlx::query(
+                        "SELECT telegram_chat_id FROM telegram_user_mappings WHERE user_id = $1",
+                    )
+                    .bind(user_id)
+                    .fetch_optional(&db_pool)
+                    .await;
+
+                    if let Ok(Some(row)) = row_opt {
+                        let chat_id: i64 = row.get(0);
+                        let _ = bot.send_message(ChatId(chat_id), notif.message).await;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_start_command(
+    bot: Bot,
+    msg: Message,
+    db: sqlx::Pool<sqlx::Postgres>,
+    redis_client: redis::Client,
+) -> ResponseResult<()> {
+    let text = msg.text().unwrap_or_default();
+    let parts: Vec<&str> = text.split_whitespace().collect();
+
+    let app_url = std::env::var("TELEGRAM_MINI_APP_URL")
+        .unwrap_or_else(|_| "https://dhruvilpatel.github.io/perps-tma-placeholder".to_string());
+
+    let keyboard = InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::web_app(
+        "Open Perps App",
+        WebAppInfo {
+            url: app_url.parse().unwrap(),
+        },
+    )]]);
+
+    if parts.len() == 2 {
+        let token = parts[1];
+        let redis_key = format!("telegram_token:{}", token);
+
+        let mut redis_conn = match redis_client.get_multiplexed_async_connection().await {
+            Ok(conn) => conn,
+            Err(_) => {
+                let _ = bot
+                    .send_message(
+                        msg.chat.id,
+                        "Failed to connect to Redis. Please try again later.",
+                    )
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let user_id_res: Result<String, _> = redis_conn.get(&redis_key).await;
+        if let Ok(user_id_str) = user_id_res {
+            let user_id = match Uuid::parse_str(&user_id_str) {
+                Ok(u) => u,
+                Err(_) => {
+                    let _ = bot
+                        .send_message(msg.chat.id, "Invalid user UUID mapped to token.")
+                        .await;
+                    return Ok(());
+                }
+            };
+
+            let query_res = sqlx::query(
+                r#"
+                INSERT INTO telegram_user_mappings (user_id, telegram_chat_id, created_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET telegram_chat_id = EXCLUDED.telegram_chat_id
+                "#,
+            )
+            .bind(user_id)
+            .bind(msg.chat.id.0)
+            .execute(&db)
+            .await;
+
+            let _: Result<(), _> = redis_conn.del(&redis_key).await;
+
+            match query_res {
+                Ok(_) => {
+                    let _ = bot.send_message(
+                        msg.chat.id,
+                        "🎉 Account successfully linked! You will now receive push notifications on Telegram for all order executions."
+                    )
+                    .reply_markup(keyboard)
+                    .await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    let _ = bot
+                        .send_message(msg.chat.id, format!("Failed to register: {:?}", e))
+                        .await;
+                    return Ok(());
+                }
+            }
+        } else {
+            let _ = bot.send_message(msg.chat.id, "Invalid or expired linking token. Please generate a new link from the exchange settings.").await;
+            return Ok(());
+        }
+    }
+
+    let _ = bot.send_message(
+        msg.chat.id,
+        "Welcome to the Perps Exchange! 📈\n\nClick the button below to launch the Trading Mini App and manage your order books, positions, and trades natively within Telegram."
+    )
+    .reply_markup(keyboard)
+    .await;
 
     Ok(())
 }

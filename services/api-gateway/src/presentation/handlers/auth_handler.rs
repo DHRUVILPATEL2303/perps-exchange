@@ -171,3 +171,25 @@ impl actix_web::FromRequest for AuthenticatedUser {
         }
     }
 }
+
+#[derive(Serialize)]
+pub struct TelegramTokenResponse {
+    pub token: String,
+}
+
+pub async fn get_telegram_token(
+    state: Data<AppState>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
+    let token = Uuid::new_v4().to_string();
+    let redis_key = format!("telegram_token:{}", token);
+
+    let mut redis_conn = match state.redis_client.get_multiplexed_async_connection().await {
+        Ok(conn) => conn,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    let _: Result<(), _> = redis_conn.set_ex(&redis_key, &user.user_id, 300).await;
+
+    HttpResponse::Ok().json(TelegramTokenResponse { token })
+}

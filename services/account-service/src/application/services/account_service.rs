@@ -2,16 +2,16 @@ use crate::application::usecase::account_usecase::AccountUseCase;
 use crate::domain::entities::account::Account;
 use crate::domain::entities::custody_address::CustodyAddress;
 use crate::domain::repositories::account_repository::AccountRepository;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use async_trait::async_trait;
 use chrono::Utc;
 use errors::app_error::ServiceError;
-use rust_decimal::Decimal;
-use std::sync::Arc;
-use uuid::Uuid;
 use rdkafka::producer::{FutureProducer, FutureRecord};
+use rust_decimal::Decimal;
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 pub struct AccountService {
     repository: Arc<dyn AccountRepository>,
@@ -19,10 +19,7 @@ pub struct AccountService {
 }
 
 impl AccountService {
-    pub fn new(
-        repository: Arc<dyn AccountRepository>,
-        producer: Arc<FutureProducer>,
-    ) -> Self {
+    pub fn new(repository: Arc<dyn AccountRepository>, producer: Arc<FutureProducer>) -> Self {
         Self {
             repository,
             producer,
@@ -93,21 +90,29 @@ impl AccountUseCase for AccountService {
         Ok(updated)
     }
 
-    async fn get_transaction_history(&self, user_id: Uuid) -> Result<Vec<crate::domain::entities::transaction::Transaction>, ServiceError> {
+    async fn get_transaction_history(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<crate::domain::entities::transaction::Transaction>, ServiceError> {
         let txs = self.repository.list_transactions_by_user(user_id).await?;
         Ok(txs)
     }
 
-    async fn get_or_create_custody_address(&self, user_id: Uuid) -> Result<CustodyAddress, ServiceError> {
-        if let Some(custody) = self.repository.find_custody_address_by_user(user_id).await? {
+    async fn get_or_create_custody_address(
+        &self,
+        user_id: Uuid,
+    ) -> Result<CustodyAddress, ServiceError> {
+        if let Some(custody) = self
+            .repository
+            .find_custody_address_by_user(user_id)
+            .await?
+        {
             return Ok(custody);
         }
 
         let program_id = Pubkey::from_str("2ayuWXRGujMmex2yJ4uoyMiFi1PUDU6yyhX9QAUJoVWL").unwrap();
-        let (pda, _) = Pubkey::find_program_address(
-            &[b"user_deposit", user_id.as_bytes()],
-            &program_id,
-        );
+        let (pda, _) =
+            Pubkey::find_program_address(&[b"user_deposit", user_id.as_bytes()], &program_id);
 
         let usdc_mint = Pubkey::from_str("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU").unwrap();
         let usdt_mint = Pubkey::from_str("EJwZeg1u717JhEv6YoRrt8A6gGTLrmKWJxgB7P15fTo3").unwrap();
@@ -122,7 +127,7 @@ impl AccountUseCase for AccountService {
             usdt_ata: usdt_ata.to_string(),
         };
 
-        let saved = self.repository.save_custody_address(new_custody).await? ;
+        let saved = self.repository.save_custody_address(new_custody).await?;
         Ok(saved)
     }
 
@@ -185,9 +190,11 @@ impl AccountUseCase for AccountService {
 }
 
 fn get_associated_token_address(wallet_address: &Pubkey, token_mint_address: &Pubkey) -> Pubkey {
-    let spl_associated_token_program_id = Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
-    let spl_token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
-    
+    let spl_associated_token_program_id =
+        Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
+    let spl_token_program_id =
+        Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+
     let (ata, _) = Pubkey::find_program_address(
         &[
             wallet_address.as_ref(),

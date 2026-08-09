@@ -1,19 +1,19 @@
-use std::sync::Arc;
-use std::str::FromStr;
-use std::time::Duration;
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use rust_decimal::Decimal;
 use serde::Deserialize;
-use uuid::Uuid;
-use sqlx::{Pool, Postgres, Connection};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
+use sqlx::{Connection, Pool, Postgres};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 struct KafkaWithdrawalRequest {
@@ -28,8 +28,9 @@ struct KafkaWithdrawalRequest {
 async fn main() -> Result<()> {
     telemetry::logging::init();
 
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/perps_accounts".to_string());
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgres://postgres:postgres@localhost:5432/perps_accounts".to_string()
+    });
 
     let db_pool = sqlx::PgPool::connect(&database_url)
         .await
@@ -46,13 +47,15 @@ async fn main() -> Result<()> {
 
     consumer.subscribe(&["withdrawal-requests"])?;
 
-    let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
-        .unwrap_or_else(|_| "https://devnet.helius-rpc.com/?api-key=b07f07b6-4c5a-417d-9c31-93300c828917".to_string());
+    let solana_rpc_url = std::env::var("SOLANA_RPC_URL").unwrap_or_else(|_| {
+        "https://devnet.helius-rpc.com/?api-key=b07f07b6-4c5a-417d-9c31-93300c828917".to_string()
+    });
     let rpc_client = Arc::new(RpcClient::new(solana_rpc_url));
 
     let keypair_path = std::env::var("CUSTODY_ADMIN_KEYPAIR_PATH")
         .unwrap_or_else(|_| "./configs/custody-admin-keypair.json".to_string());
-    let admin_keypair = Arc::new(load_keypair(&keypair_path).context("Failed to load admin keypair")?);
+    let admin_keypair =
+        Arc::new(load_keypair(&keypair_path).context("Failed to load admin keypair")?);
 
     tracing::info!("Withdrawal Signer Service started. Listening for requests...");
 
@@ -89,7 +92,11 @@ async fn process_withdrawal(
     admin: Arc<Keypair>,
     db: Pool<Postgres>,
 ) -> Result<()> {
-    tracing::info!("Processing withdrawal {} for user {}", req.tx_id, req.user_id);
+    tracing::info!(
+        "Processing withdrawal {} for user {}",
+        req.tx_id,
+        req.user_id
+    );
 
     let user_dest_pubkey = Pubkey::from_str(&req.destination_address)?;
     let amount = Decimal::from_str(&req.amount)?;
@@ -101,7 +108,11 @@ async fn process_withdrawal(
 
     let usdc_mint = Pubkey::from_str("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU").unwrap();
     let usdt_mint = Pubkey::from_str("EJwZeg1u717JhEv6YoRrt8A6gGTLrmKWJxgB7P15fTo3").unwrap();
-    let mint_pubkey = if req.asset == "USDC" { usdc_mint } else { usdt_mint };
+    let mint_pubkey = if req.asset == "USDC" {
+        usdc_mint
+    } else {
+        usdt_mint
+    };
 
     let treasury_ata_env = if req.asset == "USDC" {
         std::env::var("CUSTODY_TREASURY_USDC_ATA")
@@ -114,8 +125,10 @@ async fn process_withdrawal(
 
     let user_dest_ata = get_associated_token_address(&user_dest_pubkey, &mint_pubkey);
 
-    let spl_token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
-    let spl_associated_token_program_id = Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
+    let spl_token_program_id =
+        Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    let spl_associated_token_program_id =
+        Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
 
     let rpc_res = tokio::task::spawn_blocking(move || {
         let account_exists = rpc.get_account(&user_dest_ata).is_ok();
@@ -129,7 +142,10 @@ async fn process_withdrawal(
                     solana_sdk::instruction::AccountMeta::new(user_dest_ata, false),
                     solana_sdk::instruction::AccountMeta::new_readonly(user_dest_pubkey, false),
                     solana_sdk::instruction::AccountMeta::new_readonly(mint_pubkey, false),
-                    solana_sdk::instruction::AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+                    solana_sdk::instruction::AccountMeta::new_readonly(
+                        solana_sdk::system_program::id(),
+                        false,
+                    ),
                     solana_sdk::instruction::AccountMeta::new_readonly(spl_token_program_id, false),
                 ],
                 data: vec![],
@@ -168,13 +184,11 @@ async fn process_withdrawal(
 
     match rpc_res {
         Ok(Ok(sig)) => {
-            sqlx::query(
-                "UPDATE transactions SET status = 'SUCCESS', tx_hash = $1 WHERE id = $2"
-            )
-            .bind(&sig)
-            .bind(req.tx_id)
-            .execute(&db)
-            .await?;
+            sqlx::query("UPDATE transactions SET status = 'SUCCESS', tx_hash = $1 WHERE id = $2")
+                .bind(&sig)
+                .bind(req.tx_id)
+                .execute(&db)
+                .await?;
             tracing::info!("On-chain withdrawal transfer successful! Tx: {}", sig);
         }
         Ok(Err(e)) => {
@@ -202,13 +216,12 @@ async fn revert_withdrawal(
 ) -> Result<()> {
     let mut tx = db.begin().await?;
 
-    let account_opt = sqlx::query(
-        "SELECT balance FROM accounts WHERE user_id = $1 AND asset = $2 FOR UPDATE"
-    )
-    .bind(user_id)
-    .bind(asset)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let account_opt =
+        sqlx::query("SELECT balance FROM accounts WHERE user_id = $1 AND asset = $2 FOR UPDATE")
+            .bind(user_id)
+            .bind(asset)
+            .fetch_optional(&mut *tx)
+            .await?;
 
     if let Some(row) = account_opt {
         let balance: Decimal = sqlx::Row::get(&row, 0);
@@ -224,21 +237,21 @@ async fn revert_withdrawal(
         .await?;
     }
 
-    sqlx::query(
-        "UPDATE transactions SET status = 'FAILED', tx_hash = $1 WHERE id = $2"
-    )
-    .bind(format!("ERROR: {}", error_msg))
-    .bind(tx_id)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE transactions SET status = 'FAILED', tx_hash = $1 WHERE id = $2")
+        .bind(format!("ERROR: {}", error_msg))
+        .bind(tx_id)
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
     Ok(())
 }
 
 fn get_associated_token_address(wallet_address: &Pubkey, token_mint_address: &Pubkey) -> Pubkey {
-    let spl_associated_token_program_id = Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
-    let spl_token_program_id = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
+    let spl_associated_token_program_id =
+        Pubkey::from_str("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL").unwrap();
+    let spl_token_program_id =
+        Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
 
     let (ata, _) = Pubkey::find_program_address(
         &[

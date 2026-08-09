@@ -82,7 +82,7 @@ services:
       [
         "bash",
         "-c",
-        "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-depth --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic solana-deposits --partitions 1 --replication-factor 1",
+        "kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic order-events --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic execution-reports --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic binance-liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic price-feed --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic liquidations --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic orderbook-depth --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic solana-deposits --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic withdrawal-requests --partitions 1 --replication-factor 1 && kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user-notifications --partitions 1 --replication-factor 1",
       ]
 
   market-service:
@@ -123,6 +123,7 @@ services:
       - CUSTODY_TREASURY_USDC_ATA=7zCsbfCpT13QzF9KCKbfvJHsxPyYwv1s7kJ6ZhXtrVsC
       - CUSTODY_TREASURY_USDT_ATA=DjmHU8he415YqSNwnQobhGNX6cmj7ao6uZ64pRtBXPZb
       - CUSTODY_PROGRAM_ID=HYcoTHLzYZiE5ok6cGoXBAbZSafxuf7aX4EGkQnFHHsM
+      - KAFKA_BROKERS=kafka:29092
     volumes:
       - ./configs/custody-admin-keypair.json:/app/configs/custody-admin-keypair.json
     depends_on:
@@ -130,6 +131,8 @@ services:
         condition: service_started
       kafka:
         condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   trading-service:
     build:
@@ -362,8 +365,15 @@ services:
       - TELOXIDE_TOKEN=8233121865:AAGKof5-00eWRzqW1NTT_d1ZyGwIIo5-PlM
       - KAFKA_BROKERS=kafka:29092
       - TELEGRAM_MINI_APP_URL=https://dhruvilpatel.github.io/perps-tma-placeholder
+      - DATABASE_URL=postgres://postgres:postgres@pgbouncer:6432/perps_accounts
+      - REDIS__HOST=redis
+      - REDIS__PORT=6379
     depends_on:
+      pgbouncer:
+        condition: service_started
       kafka:
+        condition: service_started
+      redis:
         condition: service_started
 
   blockchain-listener:
