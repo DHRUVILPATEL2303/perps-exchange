@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::str::FromStr;
 use anyhow::Result;
 use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use crate::state::AppState;
 
-#[derive(Deserialize, serde::Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct TradeEvent {
     pub id: String,
     pub symbol: String,

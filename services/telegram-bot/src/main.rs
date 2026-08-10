@@ -327,10 +327,12 @@ async fn handle_command(
             .await?;
         }
         Command::Balance => {
-            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
-                .bind(msg.chat.id.0)
-                .fetch_optional(&db)
-                .await 
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
             {
                 Ok(Some(row)) => {
                     let uid: Uuid = row.get(0);
@@ -349,24 +351,37 @@ async fn handle_command(
 
             let account_service_url = std::env::var("ACCOUNT_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:50053".to_string());
-            
-            let mut client = match proto::account::account_service_client::AccountServiceClient::connect(account_service_url).await {
-                Ok(c) => c,
-                Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to connect to Account Service. Please try again later.").await?;
-                    return Ok(());
-                }
-            };
 
-            let usdc_res = client.get_balance(proto::account::GetBalanceRequest {
-                user_id: user_id.clone(),
-                asset: "USDC".to_string(),
-            }).await;
+            let mut client =
+                match proto::account::account_service_client::AccountServiceClient::connect(
+                    account_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Account Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
 
-            let usdt_res = client.get_balance(proto::account::GetBalanceRequest {
-                user_id: user_id.clone(),
-                asset: "USDT".to_string(),
-            }).await;
+            let usdc_res = client
+                .get_balance(proto::account::GetBalanceRequest {
+                    user_id: user_id.clone(),
+                    asset: "USDC".to_string(),
+                })
+                .await;
+
+            let usdt_res = client
+                .get_balance(proto::account::GetBalanceRequest {
+                    user_id: user_id.clone(),
+                    asset: "USDT".to_string(),
+                })
+                .await;
 
             fn fmt_amount(s: &str) -> String {
                 rust_decimal::Decimal::from_str(s)
@@ -381,11 +396,14 @@ async fn handle_command(
                     let res = r.into_inner();
                     let avail = fmt_amount(&res.available_balance);
                     let locked = fmt_amount(&res.locked_balance);
-                    let total = rust_decimal::Decimal::from_str(&res.available_balance).unwrap_or_default()
+                    let total = rust_decimal::Decimal::from_str(&res.available_balance)
+                        .unwrap_or_default()
                         + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
                     response_text.push_str(&format!(
                         "*USDC*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
-                        format!("{:.4}", total), avail, locked
+                        format!("{:.4}", total),
+                        avail,
+                        locked
                     ));
                 }
                 Err(_) => response_text.push_str("*USDC*: \u{274c} Unavailable\n\n"),
@@ -396,11 +414,14 @@ async fn handle_command(
                     let res = r.into_inner();
                     let avail = fmt_amount(&res.available_balance);
                     let locked = fmt_amount(&res.locked_balance);
-                    let total = rust_decimal::Decimal::from_str(&res.available_balance).unwrap_or_default()
+                    let total = rust_decimal::Decimal::from_str(&res.available_balance)
+                        .unwrap_or_default()
                         + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
                     response_text.push_str(&format!(
                         "*USDT*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
-                        format!("{:.4}", total), avail, locked
+                        format!("{:.4}", total),
+                        avail,
+                        locked
                     ));
                 }
                 Err(_) => response_text.push_str("*USDT*: \u{274c} Unavailable\n\n"),
@@ -411,10 +432,12 @@ async fn handle_command(
                 .await?;
         }
         Command::Positions => {
-            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
-                .bind(msg.chat.id.0)
-                .fetch_optional(&db)
-                .await 
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
             {
                 Ok(Some(row)) => {
                     let uid: Uuid = row.get(0);
@@ -433,26 +456,39 @@ async fn handle_command(
 
             let trading_service_url = std::env::var("TRADING_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:50052".to_string());
-            
-            let mut client = match proto::trading::trading_service_client::TradingServiceClient::connect(trading_service_url).await {
-                Ok(c) => c,
-                Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to connect to Trading Service. Please try again later.").await?;
-                    return Ok(());
-                }
-            };
 
-            let res = client.get_postions(proto::trading::GetPostionsRequest {
-                user_id: user_id.clone(),
-            }).await;
+            let mut client =
+                match proto::trading::trading_service_client::TradingServiceClient::connect(
+                    trading_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Trading Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+
+            let res = client
+                .get_postions(proto::trading::GetPostionsRequest {
+                    user_id: user_id.clone(),
+                })
+                .await;
 
             match res {
                 Ok(r) => {
                     let positions = r.into_inner().positions;
                     if positions.is_empty() {
-                        bot.send_message(msg.chat.id, "📊 **No Active Perp Positions**").await?;
+                        bot.send_message(msg.chat.id, "📊 **No Active Perp Positions**")
+                            .await?;
                     } else {
-                        let mut response_text = "📊 **Your Active Perp Positions**:\n\n".to_string();
+                        let mut response_text =
+                            "📊 **Your Active Perp Positions**:\n\n".to_string();
                         for pos in positions {
                             response_text.push_str(&format!(
                                 "• **{}** ({})\n  Size: **{}**\n  Entry Price: **{}**\n  Leverage: **{}x** ({})\n  Unrealized PnL: **{}**\n\n",
@@ -463,15 +499,18 @@ async fn handle_command(
                     }
                 }
                 Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to retrieve positions.").await?;
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve positions.")
+                        .await?;
                 }
             }
         }
         Command::Trades => {
-            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
-                .bind(msg.chat.id.0)
-                .fetch_optional(&db)
-                .await 
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
             {
                 Ok(Some(row)) => {
                     let uid: Uuid = row.get(0);
@@ -490,26 +529,39 @@ async fn handle_command(
 
             let trading_service_url = std::env::var("TRADING_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:50052".to_string());
-            
-            let mut client = match proto::trading::trading_service_client::TradingServiceClient::connect(trading_service_url).await {
-                Ok(c) => c,
-                Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to connect to Trading Service. Please try again later.").await?;
-                    return Ok(());
-                }
-            };
 
-            let res = client.get_trade_history(proto::trading::GetTradeHistoryRequest {
-                user_id: user_id.clone(),
-            }).await;
+            let mut client =
+                match proto::trading::trading_service_client::TradingServiceClient::connect(
+                    trading_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Trading Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+
+            let res = client
+                .get_trade_history(proto::trading::GetTradeHistoryRequest {
+                    user_id: user_id.clone(),
+                })
+                .await;
 
             match res {
                 Ok(r) => {
                     let trades = r.into_inner().trades;
                     if trades.is_empty() {
-                        bot.send_message(msg.chat.id, "📝 **No Trade History Found**").await?;
+                        bot.send_message(msg.chat.id, "📝 **No Trade History Found**")
+                            .await?;
                     } else {
-                        let mut response_text = "📝 **Your Trade History (Last 10)**:\n\n".to_string();
+                        let mut response_text =
+                            "📝 **Your Trade History (Last 10)**:\n\n".to_string();
                         let limit = trades.len().min(10);
                         for i in 0..limit {
                             let t = &trades[trades.len() - 1 - i];
@@ -522,15 +574,18 @@ async fn handle_command(
                     }
                 }
                 Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to retrieve trade history.").await?;
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve trade history.")
+                        .await?;
                 }
             }
         }
         Command::History => {
-            let user_id_opt = match sqlx::query("SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1")
-                .bind(msg.chat.id.0)
-                .fetch_optional(&db)
-                .await 
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
             {
                 Ok(Some(row)) => {
                     let uid: Uuid = row.get(0);
@@ -549,38 +604,50 @@ async fn handle_command(
 
             let account_service_url = std::env::var("ACCOUNT_SERVICE_URL")
                 .unwrap_or_else(|_| "http://localhost:50053".to_string());
-            
-            let mut client = match proto::account::account_service_client::AccountServiceClient::connect(account_service_url).await {
-                Ok(c) => c,
-                Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to connect to Account Service. Please try again later.").await?;
-                    return Ok(());
-                }
-            };
 
-            let res = client.get_transaction_history(proto::account::GetTransactionHistoryRequest {
-                user_id: user_id.clone(),
-            }).await;
+            let mut client =
+                match proto::account::account_service_client::AccountServiceClient::connect(
+                    account_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Account Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+
+            let res = client
+                .get_transaction_history(proto::account::GetTransactionHistoryRequest {
+                    user_id: user_id.clone(),
+                })
+                .await;
 
             match res {
                 Ok(r) => {
                     let txs = r.into_inner().transactions;
                     if txs.is_empty() {
-                        bot.send_message(msg.chat.id, "📜 No Transaction History Found").await?;
+                        bot.send_message(msg.chat.id, "📜 No Transaction History Found")
+                            .await?;
                     } else {
                         fn fmt_status(status: &str) -> &str {
                             match status {
                                 "SUCCESS" => "✅ Success",
-                                "FAILED"  => "❌ Failed",
+                                "FAILED" => "❌ Failed",
                                 "PENDING" => "⏳ Pending",
-                                other     => other,
+                                other => other,
                             }
                         }
                         fn fmt_tx(tx_hash: &str) -> String {
                             if tx_hash.is_empty() || tx_hash.starts_with("ERROR") {
                                 "—".to_string()
                             } else if tx_hash.len() > 16 {
-                                format!("{}…{}", &tx_hash[..8], &tx_hash[tx_hash.len()-8..])
+                                format!("{}…{}", &tx_hash[..8], &tx_hash[tx_hash.len() - 8..])
                             } else {
                                 tx_hash.to_string()
                             }
@@ -595,9 +662,9 @@ async fn handle_command(
                         }
                         fn tx_icon(tx_type: &str) -> &str {
                             match tx_type {
-                                "DEPOSIT"    => "⬇️",
+                                "DEPOSIT" => "⬇️",
                                 "WITHDRAWAL" => "⬆️",
-                                _            => "↔️",
+                                _ => "↔️",
                             }
                         }
 
@@ -615,13 +682,17 @@ async fn handle_command(
                                 fmt_ts(&tx.created_at),
                                 fmt_tx(&tx.tx_hash),
                             ));
-                            response_text.push_str(&format!("   {}\n──────────────────────\n", fmt_status(&tx.status)));
+                            response_text.push_str(&format!(
+                                "   {}\n──────────────────────\n",
+                                fmt_status(&tx.status)
+                            ));
                         }
                         bot.send_message(msg.chat.id, response_text).await?;
                     }
                 }
                 Err(_) => {
-                    bot.send_message(msg.chat.id, "❌ Failed to retrieve transaction history.").await?;
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve transaction history.")
+                        .await?;
                 }
             }
         }
