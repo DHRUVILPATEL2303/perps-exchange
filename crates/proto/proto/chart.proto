@@ -4,6 +4,7 @@ package chart;
 
 service ChartService {
     rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
+    rpc GetTicker(GetTickerRequest) returns (GetTickerResponse);
 }
 
 message GetCandlesRequest {
@@ -14,7 +15,7 @@ message GetCandlesRequest {
 
 message CandleInfo {
     int64 timestamp = 1;   // unix time
-    string open = 2;       
+    string open = 2;
     string high = 3;
     string low = 4;
     string close = 5;
@@ -23,4 +24,20 @@ message CandleInfo {
 
 message GetCandlesResponse {
     repeated CandleInfo candles = 1;
+}
+
+message GetTickerRequest {
+    string symbol = 1;
+}
+
+message GetTickerResponse {
+    string symbol = 1;
+    string last_price = 2;
+    string price_change_24h=3;
+    string price_change_pct_24h = 4;
+    string high_24h = 5;
+    string low_24h = 6;
+    string volume_24h = 7;
+    string open_24h = 8;
+    int64  trade_count_24h = 9;
 }

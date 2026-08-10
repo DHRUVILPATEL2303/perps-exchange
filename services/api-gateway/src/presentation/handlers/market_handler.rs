@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use actix_web::HttpResponse;
 use actix_web::web::{Data, Path, Query};
-use proto::chart::GetCandlesRequest as GrpcGetCandlesRequest;
+use proto::chart::{GetCandlesRequest as GrpcGetCandlesRequest, GetTickerRequest};
 use proto::market::{ListMarketsRequest, CreateMarketRequest};
 use redis::AsyncCommands;
 use serde::Deserialize;
@@ -141,5 +141,17 @@ pub async fn get_candles(
         Err(e) => {
             HttpResponse::InternalServerError().body(format!("Failed to retrieve candles: {:?}", e))
         }
+    }
+}
+
+pub async fn get_ticker(
+    state: Data<AppState>,
+    path: Path<String>,
+) -> HttpResponse {
+    let symbol = path.into_inner();
+    let mut client = state.chart_client.clone();
+    match client.get_ticker(GetTickerRequest { symbol }).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner()),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
