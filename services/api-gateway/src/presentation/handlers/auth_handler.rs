@@ -1,11 +1,11 @@
-use actix_web::web::{Data, Json};
-use actix_web::HttpResponse;
 use crate::state::AppState;
+use actix_web::HttpResponse;
+use actix_web::web::{Data, Json};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use redis::AsyncCommands;
-use jsonwebtoken::{encode, Header, EncodingKey};
 
 #[derive(Deserialize)]
 pub struct ChallengeRequest {
@@ -37,10 +37,7 @@ pub struct Claims {
     pub exp: usize,
 }
 
-pub async fn get_challenge(
-    state: Data<AppState>,
-    body: Json<ChallengeRequest>,
-) -> HttpResponse {
+pub async fn get_challenge(state: Data<AppState>, body: Json<ChallengeRequest>) -> HttpResponse {
     let req = body.into_inner();
     let nonce = Uuid::new_v4().to_string();
     let redis_key = format!("challenge:{}", req.public_key);
@@ -55,10 +52,7 @@ pub async fn get_challenge(
     HttpResponse::Ok().json(ChallengeResponse { nonce })
 }
 
-pub async fn login(
-    state: Data<AppState>,
-    body: Json<LoginRequest>,
-) -> HttpResponse {
+pub async fn login(state: Data<AppState>, body: Json<LoginRequest>) -> HttpResponse {
     let req = body.into_inner();
     let redis_key = format!("challenge:{}", req.public_key);
 
@@ -108,13 +102,17 @@ pub async fn login(
 
     let signature = Signature::from_bytes(&sig_array);
 
-    if verifying_key.verify(message.as_bytes(), &signature).is_err() {
+    if verifying_key
+        .verify(message.as_bytes(), &signature)
+        .is_err()
+    {
         return HttpResponse::Unauthorized().body("Signature verification failed");
     }
 
     let user_id = Uuid::new_v5(&Uuid::NAMESPACE_URL, req.public_key.as_bytes()).to_string();
 
-    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
     let claims = Claims {
         sub: user_id.clone(),
         pubkey: req.public_key,
@@ -138,25 +136,102 @@ pub struct AuthenticatedUser {
     pub pubkey: String,
 }
 
+pub struct AdminUser {
+    pub user_id: String,
+    pub pubkey: String,
+}
+
+impl actix_web::FromRequest for AdminUser {
+    type Error = actix_web::Error;
+    type Future = futures_util::future::Ready<Result<Self, Self::Error>>;
+
+    fn from_request(
+        req: &actix_web::HttpRequest,
+        _payload: &mut actix_web::dev::Payload,
+    ) -> Self::Future {
+        let auth_header = match req.headers().get("Authorization") {
+            Some(val) => match val.to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid auth header encoding",
+                    )));
+                }
+            },
+            None => {
+                return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                    "Missing Authorization header",
+                )));
+            }
+        };
+
+        if !auth_header.starts_with("Bearer ") {
+            return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                "Auth header must start with Bearer ",
+            )));
+        }
+
+        let token = &auth_header[7..];
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
+
+        match jsonwebtoken::decode::<Claims>(
+            token,
+            &jsonwebtoken::DecodingKey::from_secret(jwt_secret.as_bytes()),
+            &jsonwebtoken::Validation::default(),
+        ) {
+            Ok(token_data) => {
+                if token_data.claims.pubkey == "CxFRgQpgwSNkdKTMPNeduosVEonQRdUV2xH2x9uicCJL" {
+                    futures_util::future::ready(Ok(AdminUser {
+                        user_id: token_data.claims.sub,
+                        pubkey: token_data.claims.pubkey,
+                    }))
+                } else {
+                    futures_util::future::ready(Err(actix_web::error::ErrorForbidden(
+                        "Admin access required",
+                    )))
+                }
+            }
+            Err(_) => futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                "Invalid or expired token",
+            ))),
+        }
+    }
+}
+
 impl actix_web::FromRequest for AuthenticatedUser {
     type Error = actix_web::Error;
     type Future = futures_util::future::Ready<Result<Self, Self::Error>>;
 
-    fn from_request(req: &actix_web::HttpRequest, _payload: &mut actix_web::dev::Payload) -> Self::Future {
+    fn from_request(
+        req: &actix_web::HttpRequest,
+        _payload: &mut actix_web::dev::Payload,
+    ) -> Self::Future {
         let auth_header = match req.headers().get("Authorization") {
             Some(val) => match val.to_str() {
                 Ok(s) => s,
-                Err(_) => return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized("Invalid auth header encoding"))),
+                Err(_) => {
+                    return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                        "Invalid auth header encoding",
+                    )));
+                }
             },
-            None => return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized("Missing Authorization header"))),
+            None => {
+                return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                    "Missing Authorization header",
+                )));
+            }
         };
 
         if !auth_header.starts_with("Bearer ") {
-            return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized("Auth header must start with Bearer ")));
+            return futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                "Auth header must start with Bearer ",
+            )));
         }
 
         let token = &auth_header[7..];
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "default_secret_key_change_me_in_production".to_string());
 
         match jsonwebtoken::decode::<Claims>(
             token,
@@ -167,7 +242,9 @@ impl actix_web::FromRequest for AuthenticatedUser {
                 user_id: token_data.claims.sub,
                 pubkey: token_data.claims.pubkey,
             })),
-            Err(_) => futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized("Invalid or expired token"))),
+            Err(_) => futures_util::future::ready(Err(actix_web::error::ErrorUnauthorized(
+                "Invalid or expired token",
+            ))),
         }
     }
 }
@@ -177,10 +254,7 @@ pub struct TelegramTokenResponse {
     pub token: String,
 }
 
-pub async fn get_telegram_token(
-    state: Data<AppState>,
-    user: AuthenticatedUser,
-) -> HttpResponse {
+pub async fn get_telegram_token(state: Data<AppState>, user: AuthenticatedUser) -> HttpResponse {
     let token = Uuid::new_v4().simple().to_string();
     let redis_key = format!("telegram_token:{}", token);
 

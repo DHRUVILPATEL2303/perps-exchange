@@ -1,7 +1,9 @@
 use crate::state::AppState;
 use actix_web::HttpResponse;
 use actix_web::web::{Data, Path, Query};
-use proto::chart::{GetCandlesRequest as GrpcGetCandlesRequest, GetTickerRequest, GetRecentTradesRequest};
+use proto::chart::{
+    GetCandlesRequest as GrpcGetCandlesRequest, GetRecentTradesRequest, GetTickerRequest,
+};
 use proto::market::{CreateMarketRequest, ListMarketsRequest};
 use redis::AsyncCommands;
 use serde::Deserialize;
@@ -44,6 +46,7 @@ pub async fn list_markets(state: Data<AppState>) -> HttpResponse {
 pub async fn create_market(
     state: Data<AppState>,
     body: actix_web::web::Json<HTTPCreateMarketRequest>,
+    _admin: crate::presentation::handlers::auth_handler::AdminUser,
 ) -> HttpResponse {
     let req = body.into_inner();
     let mut client = state.market_client.clone();
@@ -166,7 +169,10 @@ pub async fn get_recent_trades(
     let symbol = path.into_inner();
     let limit = query.limit.unwrap_or(50);
     let mut client = state.chart_client.clone();
-    match client.get_recent_trades(GetRecentTradesRequest { symbol, limit }).await {
+    match client
+        .get_recent_trades(GetRecentTradesRequest { symbol, limit })
+        .await
+    {
         Ok(res) => HttpResponse::Ok().json(res.into_inner().trades),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
