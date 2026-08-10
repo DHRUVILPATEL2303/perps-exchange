@@ -82,10 +82,24 @@ impl AccountUseCase for AccountService {
         amount: Decimal,
         adjustment_type: &str,
         tx_hash: Option<String>,
+        symbol: Option<String>,
+        side: Option<String>,
+        position_size: Option<Decimal>,
+        funding_rate: Option<Decimal>,
     ) -> Result<Account, ServiceError> {
         let updated = self
             .repository
-            .adjust_margin_atomic(user_id, asset, amount, adjustment_type, tx_hash)
+            .adjust_margin_atomic(
+                user_id,
+                asset,
+                amount,
+                adjustment_type,
+                tx_hash,
+                symbol,
+                side,
+                position_size,
+                funding_rate,
+            )
             .await?;
         Ok(updated)
     }
@@ -98,6 +112,16 @@ impl AccountUseCase for AccountService {
     ) -> Result<Vec<crate::domain::entities::transaction::Transaction>, ServiceError> {
         let txs = self.repository.list_transactions_by_user(user_id, page, limit).await?;
         Ok(txs)
+    }
+
+    async fn get_funding_history(
+        &self,
+        user_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<Vec<crate::domain::entities::funding_payment::FundingPayment>, ServiceError> {
+        let history = self.repository.list_funding_payments_by_user(user_id, page, limit).await?;
+        Ok(history)
     }
 
     async fn get_or_create_custody_address(

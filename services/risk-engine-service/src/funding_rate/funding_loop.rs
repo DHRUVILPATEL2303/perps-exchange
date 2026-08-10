@@ -57,7 +57,15 @@ pub async fn run_funding_loop(state: AppState, tracker: PriceTracker) {
                             user_id, symbol, side, size, fee, amount
                         );
 
-                        match state.account_client.adjust_margin(user_id.to_string(), amount.to_string(), "FUNDING".to_string()).await {
+                        match state.account_client.adjust_margin(
+                            user_id.to_string(),
+                            amount.to_string(),
+                            "FUNDING".to_string(),
+                            Some(symbol.clone()),
+                            Some(side.clone()),
+                            Some(size.to_string()),
+                            Some(funding_rate.to_string()),
+                        ).await {
                             Ok(_) => {
                                 tracing::info!("Funding settled successfully for user {}", user_id);
                             }

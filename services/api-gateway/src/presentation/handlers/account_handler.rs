@@ -1,13 +1,13 @@
-use actix_web::web::{Data, Path, Json, Query};
-use actix_web::HttpResponse;
-use crate::state::AppState;
 use crate::presentation::handlers::auth_handler::AuthenticatedUser;
+use crate::state::AppState;
+use actix_web::HttpResponse;
+use actix_web::web::{Data, Json, Path, Query};
 use proto::account::{
-    GetBalanceRequest, AdjustMarginRequest, GetTransactionHistoryRequest, GetDepositAddressRequest,
-    WithdrawRequest,
+    AdjustMarginRequest, GetBalanceRequest, GetDepositAddressRequest, GetFundingHistoryRequest,
+    GetTransactionHistoryRequest, WithdrawRequest,
 };
-use uuid::Uuid;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct HTTPDepositRequest {
@@ -40,7 +40,7 @@ pub async fn get_balance(
     }
     let mut client = state.account_client.clone();
     let asset = query.asset.clone().unwrap_or_else(|| "USDC".to_string());
-    
+
     let req = GetBalanceRequest {
         user_id: user_id.to_string(),
         asset,
@@ -65,6 +65,7 @@ pub async fn deposit_funds(
         user_id: req.user_id.to_string(),
         amount: req.amount,
         adjustment_type: "DEPOSIT".to_string(),
+        ..Default::default()
     };
     match client.adjust_margin(grpc_req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner()),
@@ -141,3 +142,24 @@ pub async fn get_deposit_address(
     }
 }
 
+pub async fn get_funding_history(
+    state: Data<AppState>,
+    path: Path<Uuid>,
+    query: Query<PaginationQuery>,
+    user: AuthenticatedUser,
+) -> HttpResponse {
+    let user_id = path.into_inner();
+    if user.user_id != user_id.to_string() {
+        return HttpResponse::Forbidden().body("Access denied");
+    }
+    let mut client = state.account_client.clone();
+    let grpc_req = GetFundingHistoryRequest {
+        user_id: user_id.to_string(),
+        page: query.page,
+        limit: query.limit,
+    };
+    match client.get_funding_history(grpc_req).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner().payments),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}

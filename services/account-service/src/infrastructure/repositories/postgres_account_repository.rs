@@ -205,6 +205,10 @@ impl AccountRepository for PostgresAccountRepository {
         amount: rust_decimal::Decimal,
         adjustment_type: &str,
         tx_hash: Option<String>,
+        symbol: Option<String>,
+        side: Option<String>,
+        position_size: Option<rust_decimal::Decimal>,
+        funding_rate: Option<rust_decimal::Decimal>,
     ) -> Result<Account, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
@@ -317,6 +321,26 @@ impl AccountRepository for PostgresAccountRepository {
         .bind(account.id)
         .fetch_one(&mut *tx)
         .await?;
+
+        if adjustment_type == "FUNDING" {
+            if let (Some(sym), Some(s), Some(size), Some(rate)) = (symbol, side, position_size, funding_rate) {
+                sqlx::query(
+                    r#"
+                    INSERT INTO funding_payments (id, user_id, symbol, side, position_size, funding_rate, amount, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                    "#,
+                )
+                .bind(Uuid::new_v4())
+                .bind(user_id)
+                .bind(sym)
+                .bind(s)
+                .bind(size)
+                .bind(rate)
+                .bind(amount)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
 
         tx.commit().await?;
         Ok(updated)
@@ -551,5 +575,32 @@ impl AccountRepository for PostgresAccountRepository {
 
         tx.commit().await?;
         Ok(updated)
+    }
+
+    async fn list_funding_payments_by_user(
+        &self,
+        user_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<Vec<crate::domain::entities::funding_payment::FundingPayment>, RepositoryError> {
+        let limit_val = limit.unwrap_or(50) as i64;
+        let offset = ((page.unwrap_or(1) - 1).max(0) as i64) * limit_val;
+
+        let payments = sqlx::query_as::<_, crate::domain::entities::funding_payment::FundingPayment>(
+            r#"
+            SELECT id, user_id, symbol, side, position_size, funding_rate, amount, created_at
+            FROM funding_payments
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(user_id)
+        .bind(limit_val)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(payments)
     }
 }

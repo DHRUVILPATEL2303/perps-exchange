@@ -1,9 +1,9 @@
 use anyhow::Result;
-use proto::account::{account_service_client::AccountServiceClient, AdjustMarginRequest};
-use proto::trading::{trading_service_client::TradingServiceClient, PlaceOrderRequest};
+use proto::account::{AdjustMarginRequest, account_service_client::AccountServiceClient};
+use proto::trading::{PlaceOrderRequest, trading_service_client::TradingServiceClient};
 use rand::Rng;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
             user_id: user.to_string(),
             amount: "1000000.00".to_string(),
             adjustment_type: "DEPOSIT".to_string(),
+            ..Default::default()
         };
         account_client.adjust_margin(req).await?;
         if (i + 1) % 100 == 0 || i + 1 == user_pool_size {
@@ -60,7 +61,10 @@ async fn main() -> Result<()> {
     }
     println!("Deposits completed in {:?}", start_deposit.elapsed());
 
-    println!("Preparing trading load on trading-service: {}...", trading_url);
+    println!(
+        "Preparing trading load on trading-service: {}...",
+        trading_url
+    );
     let users = Arc::new(users);
     let total_sent = Arc::new(AtomicUsize::new(0));
     let total_success = Arc::new(Mutex::new(0));
@@ -199,13 +203,41 @@ async fn fetch_and_print_metrics(service_name: &str, url: &str) {
     match reqwest::get(url).await {
         Ok(res) => {
             if let Ok(body) = res.text().await {
-                parse_and_display_metric(&body, "trading_risk_check_duration_seconds", "Risk Engine Check");
-                parse_and_display_metric(&body, "trading_db_insert_duration_seconds", "Postgres Order Insert");
-                parse_and_display_metric(&body, "trading_margin_lock_duration_seconds", "Account Margin Lock");
-                parse_and_display_metric(&body, "trading_kafka_publish_duration_seconds", "Kafka Order Publish");
-                parse_and_display_metric(&body, "order_transit_duration_seconds", "Kafka Transit Queue Latency");
-                parse_and_display_metric(&body, "matching_duration_seconds", "Orderbook Match Execution");
-                parse_and_display_metric(&body, "grpc_request_duration_seconds", "Overall gRPC Handler");
+                parse_and_display_metric(
+                    &body,
+                    "trading_risk_check_duration_seconds",
+                    "Risk Engine Check",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "trading_db_insert_duration_seconds",
+                    "Postgres Order Insert",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "trading_margin_lock_duration_seconds",
+                    "Account Margin Lock",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "trading_kafka_publish_duration_seconds",
+                    "Kafka Order Publish",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "order_transit_duration_seconds",
+                    "Kafka Transit Queue Latency",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "matching_duration_seconds",
+                    "Orderbook Match Execution",
+                );
+                parse_and_display_metric(
+                    &body,
+                    "grpc_request_duration_seconds",
+                    "Overall gRPC Handler",
+                );
             }
         }
         Err(e) => {
@@ -236,7 +268,10 @@ fn parse_and_display_metric(body: &str, metric_name: &str, display_name: &str) {
     if let (Some(s), Some(c)) = (sum, count) {
         if c > 0.0 {
             let avg_ms = (s / c) * 1000.0;
-            println!("  - {}: Average = {:.2} ms (Count = {})", display_name, avg_ms, c);
+            println!(
+                "  - {}: Average = {:.2} ms (Count = {})",
+                display_name, avg_ms, c
+            );
         }
     }
 }

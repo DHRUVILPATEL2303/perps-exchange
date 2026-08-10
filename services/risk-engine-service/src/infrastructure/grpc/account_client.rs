@@ -30,12 +30,20 @@ impl AccountGrpcClient {
         user_id: String,
         amount: String,
         adjustment_type: String,
+        symbol: Option<String>,
+        side: Option<String>,
+        position_size: Option<String>,
+        funding_rate: Option<String>,
     ) -> Result<AdjustMarginResponse> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(AdjustMarginRequest {
             user_id,
             amount,
             adjustment_type,
+            symbol,
+            side,
+            position_size,
+            funding_rate,
         });
         let response = client.adjust_margin(request).await?;
         Ok(response.into_inner())

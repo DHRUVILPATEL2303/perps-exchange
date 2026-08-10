@@ -75,7 +75,7 @@ impl DepositConsumer {
         );
 
         self.account_service
-            .adjust_margin(event.user_id, &event.asset, amount, "DEPOSIT", Some(event.tx_hash))
+            .adjust_margin(event.user_id, &event.asset, amount, "DEPOSIT", Some(event.tx_hash), None, None, None, None)
             .await?;
 
         Ok(())

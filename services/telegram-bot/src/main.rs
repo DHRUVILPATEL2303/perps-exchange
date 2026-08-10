@@ -799,7 +799,7 @@ async fn handle_command(
 
                         for order in orders {
                             let side_emoji = if order.side == "BUY" { "🟢" } else { "🔴" };
-                            
+
                             response_text.push_str(&format!(
                                 "{} <b>{}</b> ({} {})\n<pre>Qty:       {:>12}\nPrice:     {:>12}\nID:        {}</pre>To cancel: <code>/cancel {} {}</code>\n──────────────────────\n",
                                 side_emoji,
@@ -893,18 +893,29 @@ async fn handle_command(
                 Ok(r) => {
                     let response = r.into_inner();
                     if response.success {
-                        bot.send_message(msg.chat.id, format!("✅ Order <code>{}</code> cancelled successfully.", order_id))
-                            .parse_mode(teloxide::types::ParseMode::Html)
-                            .await?;
+                        bot.send_message(
+                            msg.chat.id,
+                            format!("✅ Order <code>{}</code> cancelled successfully.", order_id),
+                        )
+                        .parse_mode(teloxide::types::ParseMode::Html)
+                        .await?;
                     } else {
-                        let err = response.error_message.unwrap_or_else(|| "Unknown error".to_string());
-                        bot.send_message(msg.chat.id, format!("❌ Failed to cancel order: {}", err))
-                            .await?;
+                        let err = response
+                            .error_message
+                            .unwrap_or_else(|| "Unknown error".to_string());
+                        bot.send_message(
+                            msg.chat.id,
+                            format!("❌ Failed to cancel order: {}", err),
+                        )
+                        .await?;
                     }
                 }
                 Err(e) => {
-                    bot.send_message(msg.chat.id, format!("❌ Failed to cancel order: {:?}", e.message()))
-                        .await?;
+                    bot.send_message(
+                        msg.chat.id,
+                        format!("❌ Failed to cancel order: {:?}", e.message()),
+                    )
+                    .await?;
                 }
             }
         }

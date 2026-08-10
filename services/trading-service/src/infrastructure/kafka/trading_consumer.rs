@@ -1,19 +1,19 @@
-use std::sync::Arc;
-use std::str::FromStr;
+use crate::{
+    application::usecase::position_usecase::PositionUseCase,
+    domain::entities::trade::Trade,
+    domain::repositories::{order_repository::OrderRepository, trade_repository::TradeRepository},
+};
 use anyhow::Result;
+use chrono::Utc;
 use futures_util::StreamExt;
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+use std::str::FromStr;
+use std::sync::Arc;
 use uuid::Uuid;
-use chrono::Utc;
-use crate::{
-    application::usecase::position_usecase::PositionUseCase,
-    domain::repositories::{order_repository::OrderRepository, trade_repository::TradeRepository},
-    domain::entities::trade::Trade,
-};
 
 #[derive(Deserialize)]
 pub struct TradeEvent {
@@ -91,14 +91,19 @@ impl TradeConsumer {
             let user_id = Uuid::parse_str(&event.maker_user_id)?;
             let price = Decimal::from_str(&event.price)?;
             let qty = Decimal::from_str(&event.quantity)?;
-            
+
             let leverage = Decimal::from(event.maker_leverage);
             let margin_to_release = (qty * price) / leverage;
 
-            self.order_repository.update_status(order_id, "CANCELLED").await?;
+            self.order_repository
+                .update_status(order_id, "CANCELLED")
+                .await?;
 
-            let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
-            let mut client = proto::account::account_service_client::AccountServiceClient::connect(account_url).await?;
+            let account_url = std::env::var("ACCOUNT_SERVICE_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+            let mut client =
+                proto::account::account_service_client::AccountServiceClient::connect(account_url)
+                    .await?;
             let request = tonic::Request::new(proto::account::ReleaseMarginRequest {
                 user_id: user_id.to_string(),
                 amount: margin_to_release.to_string(),
@@ -117,38 +122,50 @@ impl TradeConsumer {
 
         let price = Decimal::from_str(&event.price)?;
         let qty = Decimal::from_str(&event.quantity)?;
-        
+
         let maker_user = Uuid::parse_str(&event.maker_user_id)?;
         let maker_order = Uuid::parse_str(&event.maker_order_id)?;
 
         let taker_user = Uuid::parse_str(&event.taker_user_id)?;
         let taker_order = Uuid::parse_str(&event.taker_order_id)?;
 
-        self.order_repository.update_status(maker_order, "FILLED").await?;
-        self.order_repository.update_status(taker_order, "FILLED").await?;
+        self.order_repository
+            .update_status(maker_order, "FILLED")
+            .await?;
+        self.order_repository
+            .update_status(taker_order, "FILLED")
+            .await?;
 
-        let maker_side = if event.taker_side == "BUY" { "SELL" } else { "BUY" };
+        let maker_side = if event.taker_side == "BUY" {
+            "SELL"
+        } else {
+            "BUY"
+        };
         let taker_side = &event.taker_side;
 
-        self.position_service.update_position_on_fill(
-            taker_user,
-            &event.symbol,
-            taker_side,
-            price,
-            qty,
-            event.taker_leverage as i32,
-            taker_order,
-        ).await?;
+        self.position_service
+            .update_position_on_fill(
+                taker_user,
+                &event.symbol,
+                taker_side,
+                price,
+                qty,
+                event.taker_leverage as i32,
+                taker_order,
+            )
+            .await?;
 
-        self.position_service.update_position_on_fill(
-            maker_user,
-            &event.symbol,
-            maker_side,
-            price,
-            qty,
-            event.maker_leverage as i32,
-            maker_order,
-        ).await?;
+        self.position_service
+            .update_position_on_fill(
+                maker_user,
+                &event.symbol,
+                maker_side,
+                price,
+                qty,
+                event.maker_leverage as i32,
+                maker_order,
+            )
+            .await?;
 
         let maker_fee_rate = Decimal::from_str("0.0002")?;
         let taker_fee_rate = Decimal::from_str("0.0005")?;
@@ -189,14 +206,18 @@ impl TradeConsumer {
         self.trade_repository.create(maker_trade).await?;
         self.trade_repository.create(taker_trade).await?;
 
-        let account_url = std::env::var("ACCOUNT_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
-        let mut client = proto::account::account_service_client::AccountServiceClient::connect(account_url).await?;
+        let account_url = std::env::var("ACCOUNT_SERVICE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:50053".to_string());
+        let mut client =
+            proto::account::account_service_client::AccountServiceClient::connect(account_url)
+                .await?;
 
         if !maker_fee.is_zero() {
             let request = tonic::Request::new(proto::account::AdjustMarginRequest {
                 user_id: maker_user.to_string(),
                 amount: (-maker_fee).to_string(),
                 adjustment_type: "CLEARANCE_FEE".to_string(),
+                ..Default::default()
             });
             let _ = client.adjust_margin(request).await?;
         }
@@ -206,6 +227,7 @@ impl TradeConsumer {
                 user_id: taker_user.to_string(),
                 amount: (-taker_fee).to_string(),
                 adjustment_type: "CLEARANCE_FEE".to_string(),
+                ..Default::default()
             });
             let _ = client.adjust_margin(request).await?;
         }

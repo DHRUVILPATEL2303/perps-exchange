@@ -27,7 +27,7 @@ pub async fn deposit(
     request: Json<AdjustBalanceRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let req = request.into_inner();
-    let account = state.account_service.adjust_margin(req.user_id, &req.asset, req.amount, "DEPOSIT", None).await?;
+    let account = state.account_service.adjust_margin(req.user_id, &req.asset, req.amount, "DEPOSIT", None, None, None, None, None).await?;
     Ok(HttpResponse::Ok().json(account))
 }
 
@@ -36,6 +36,6 @@ pub async fn withdraw(
     request: Json<AdjustBalanceRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let req = request.into_inner();
-    let account = state.account_service.adjust_margin(req.user_id, &req.asset, req.amount, "WITHDRAW", None).await?;
+    let account = state.account_service.adjust_margin(req.user_id, &req.asset, req.amount, "WITHDRAW", None, None, None, None, None).await?;
     Ok(HttpResponse::Ok().json(account))
 }

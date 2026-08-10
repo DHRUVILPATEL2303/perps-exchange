@@ -1,10 +1,8 @@
 use anyhow::Result;
 use proto::account::{
+    AdjustMarginRequest, AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse,
+    LockMarginRequest, LockMarginResponse, ReleaseMarginRequest, ReleaseMarginResponse,
     account_service_client::AccountServiceClient,
-    GetBalanceRequest, GetBalanceResponse,
-    LockMarginRequest, LockMarginResponse,
-    ReleaseMarginRequest, ReleaseMarginResponse,
-    AdjustMarginRequest, AdjustMarginResponse,
 };
 use tonic::transport::{Channel, Endpoint};
 
@@ -28,7 +26,12 @@ impl AccountGrpcClient {
         Ok(response.into_inner())
     }
 
-    pub async fn lock_margin(&self, user_id: String, amount: String, reference_id: String) -> Result<LockMarginResponse> {
+    pub async fn lock_margin(
+        &self,
+        user_id: String,
+        amount: String,
+        reference_id: String,
+    ) -> Result<LockMarginResponse> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(LockMarginRequest {
             user_id,
@@ -39,7 +42,12 @@ impl AccountGrpcClient {
         Ok(response.into_inner())
     }
 
-    pub async fn release_margin(&self, user_id: String, amount: String, reference_id: String) -> Result<ReleaseMarginResponse> {
+    pub async fn release_margin(
+        &self,
+        user_id: String,
+        amount: String,
+        reference_id: String,
+    ) -> Result<ReleaseMarginResponse> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(ReleaseMarginRequest {
             user_id,
@@ -50,12 +58,18 @@ impl AccountGrpcClient {
         Ok(response.into_inner())
     }
 
-    pub async fn adjust_margin(&self, user_id: String, amount: String, adjustment_type: String) -> Result<AdjustMarginResponse> {
+    pub async fn adjust_margin(
+        &self,
+        user_id: String,
+        amount: String,
+        adjustment_type: String,
+    ) -> Result<AdjustMarginResponse> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(AdjustMarginRequest {
             user_id,
             amount,
             adjustment_type,
+            ..Default::default()
         });
         let response = client.adjust_margin(request).await?;
         Ok(response.into_inner())

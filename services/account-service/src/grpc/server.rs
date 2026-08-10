@@ -4,7 +4,8 @@ use proto::account::{
     AdjustMarginResponse, GetBalanceRequest, GetBalanceResponse, GetDepositAddressRequest,
     GetDepositAddressResponse, GetTransactionHistoryRequest, GetTransactionHistoryResponse,
     LockMarginRequest, LockMarginResponse, ReleaseMarginRequest, ReleaseMarginResponse,
-    TransactionInfo, WithdrawRequest, WithdrawResponse,
+    TransactionInfo, WithdrawRequest, WithdrawResponse, GetFundingHistoryRequest,
+    GetFundingHistoryResponse, FundingPaymentInfo,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -86,9 +87,32 @@ impl GrpcAccountService for AccountGrpcService {
         let amount =
             Decimal::from_str(&req.amount).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
+        let symbol = req.symbol.clone();
+        let side = req.side.clone();
+        let position_size = if let Some(ref s) = req.position_size {
+            Some(Decimal::from_str(s).map_err(|e| Status::invalid_argument(e.to_string()))?)
+        } else {
+            None
+        };
+        let funding_rate = if let Some(ref s) = req.funding_rate {
+            Some(Decimal::from_str(s).map_err(|e| Status::invalid_argument(e.to_string()))?)
+        } else {
+            None
+        };
+
         let account = self
             .service
-            .adjust_margin(user_id, "USDT", amount, &req.adjustment_type, None)
+            .adjust_margin(
+                user_id,
+                "USDT",
+                amount,
+                &req.adjustment_type,
+                None,
+                symbol,
+                side,
+                position_size,
+                funding_rate,
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -170,6 +194,39 @@ impl GrpcAccountService for AccountGrpcService {
         Ok(Response::new(WithdrawResponse {
             tx_hash,
             new_balance: new_balance.to_string(),
+        }))
+    }
+
+    async fn get_funding_history(
+        &self,
+        request: Request<GetFundingHistoryRequest>,
+    ) -> Result<Response<GetFundingHistoryResponse>, Status> {
+        let req = request.into_inner();
+        let user_id =
+            Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        let payments = self
+            .service
+            .get_funding_history(user_id, req.page, req.limit)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let mapped = payments
+            .into_iter()
+            .map(|p| FundingPaymentInfo {
+                id: p.id.to_string(),
+                user_id: p.user_id.to_string(),
+                symbol: p.symbol,
+                side: p.side,
+                position_size: p.position_size.to_string(),
+                funding_rate: p.funding_rate.to_string(),
+                amount: p.amount.to_string(),
+                created_at: p.created_at.to_rfc3339(),
+            })
+            .collect();
+
+        Ok(Response::new(GetFundingHistoryResponse {
+            payments: mapped,
         }))
     }
 }

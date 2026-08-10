@@ -10,6 +10,7 @@ service AccountService {
   rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
   rpc GetDepositAddress(GetDepositAddressRequest) returns (GetDepositAddressResponse);
   rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+  rpc GetFundingHistory(GetFundingHistoryRequest) returns (GetFundingHistoryResponse);
 }
 
 message WithdrawRequest {
@@ -57,6 +58,10 @@ message AdjustMarginRequest {
   string user_id = 1;
   string amount = 2;
   string adjustment_type = 3;
+  optional string symbol = 4;
+  optional string side = 5;
+  optional string position_size = 6;
+  optional string funding_rate = 7;
 }
 message AdjustMarginResponse {
   string new_balance = 1;
@@ -89,3 +94,25 @@ message GetDepositAddressResponse {
   string usdc_ata = 2;
   string usdt_ata = 3;
 }
+
+message GetFundingHistoryRequest {
+  string user_id = 1;
+  optional int32 page = 2;
+  optional int32 limit = 3;
+}
+
+message GetFundingHistoryResponse {
+  repeated FundingPaymentInfo payments = 1;
+}
+
+message FundingPaymentInfo {
+  string id = 1;
+  string user_id = 2;
+  string symbol = 3;
+  string side = 4;
+  string position_size = 5;
+  string funding_rate = 6;
+  string amount = 7;
+  string created_at = 8;
+}
+
