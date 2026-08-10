@@ -1,151 +1,1056 @@
-# Perpetuals Exchange Architecture & System Documentation
+# ⚡ Perps Exchange — High-Performance Perpetual Futures Exchange
 
-This repository houses a high-performance, transactionally safe, real-time microservices-based perpetuals exchange. The system is designed with a segregated write-path (leveraging Kafka event streaming) and a read-path (leveraging gRPC and Redis caching).
-
----
-
-## 1. System Overview & Microservices
-
-The exchange consists of 9 microservices, each built in Rust:
-
-1. **`api-gateway`**: The public entry point. Handles REST requests, WebSocket (WS), and WebTransport (WT) connections. Subscribes client streams directly to Redis PubSub.
-2. **`trading-service`**: Handles order creation, cancellation, and tracks user positions.
-3. **`account-service`**: Manages user balances and frozen margins. Employs row-level database locking (`FOR UPDATE`) to ensure absolute safety.
-4. **`matching-engine`**: An in-memory B-Tree orderbook. Matches orders sequentially and publishes fills.
-5. **`risk-engine-service`**: Calculates unrealized PnL, mark prices, monitors position health, and triggers liquidations when margin drops below **0.5% MMR**.
-6. **`chart-service`**: Aggregates real-time trades into OHLCV candlestick bars and caches them in Redis ZSETs while writing to a TimescaleDB hypertable.
-7. **`oracle-aggregator`**: Streams external prices from Binance & Coinbase WebSockets to calculate a consolidated Index Price.
-8. **`binance-liquidation`**: Subscribes to Binance's live liquidation stream to publish liquidations for market tracking.
-9. **`market-service`**: Stores static market metadata (min/max size, tick sizes, etc.).
+> A production-grade, fully on-chain settled **Perpetual Futures DEX** built entirely in **Rust** — sub-millisecond matching engine, Solana-based custody, real-time WebSocket/WebTransport streaming, and a fully event-driven microservices architecture.
 
 ---
 
-## 2. Microservice Communication Matrix
+## Table of Contents
 
-The exchange uses a hybrid communication model tailored for performance and safety:
-
-| Source Service | Target Service | Protocol | Purpose |
-| :--- | :--- | :--- | :--- |
-| `api-gateway` | `trading-service` | REST/gRPC | Submit/Cancel orders, query open positions |
-| `api-gateway` | `account-service` | REST/gRPC | Fetch user balances, deposit/withdraw |
-| `api-gateway` | `chart-service` | REST/gRPC | Pull historical candles |
-| `trading-service` | `account-service` | gRPC | Lock/release/adjust margins on order placement and fills |
-| `trading-service` | `market-service` | gRPC | Validate symbol metadata |
-| `trading-service` | `risk-engine-service` | gRPC | Check position health before placing order |
-| `risk-engine-service` | `account-service` | gRPC | Adjust balances (Funding fees, Bankruptcy/Insurance transfers) |
+1. [Overview](#overview)
+2. [Architecture Diagram](#architecture-diagram)
+3. [Service Catalog](#service-catalog)
+4. [Technology Stack](#technology-stack)
+5. [Inter-Service Communication](#inter-service-communication)
+6. [Kafka Topics](#kafka-topics)
+7. [gRPC Service Definitions](#grpc-service-definitions)
+8. [Client Connectivity](#client-connectivity)
+9. [Authentication Flow](#authentication-flow)
+10. [Order Placement Flow](#order-placement-flow)
+11. [Order Cancellation Flow](#order-cancellation-flow)
+12. [Matching Engine Deep Dive](#matching-engine-deep-dive)
+13. [Deposit Flow (Solana)](#deposit-flow-solana-on-chain)
+14. [Withdrawal Flow (Solana)](#withdrawal-flow-solana-on-chain)
+15. [Liquidation Flow](#liquidation-flow)
+16. [Funding Rate Settlement](#funding-rate-settlement)
+17. [Stop / Conditional Orders](#stop--conditional-orders)
+18. [Price Oracle](#price-oracle--mark-price)
+19. [Database Design](#database-design)
+20. [Observability Stack](#observability-stack)
+21. [Scaling Guide](#scaling-guide)
+22. [Running Locally](#running-locally)
+23. [Project Structure](#project-structure)
 
 ---
 
-## 3. Kafka Topics & Event Streams
+## Overview
 
-Kafka acts as our asynchronous event backbone, decoupling the transaction paths.
+**Perps Exchange** is a perpetual futures trading platform where:
 
-| Topic Name | Producer(s) | Consumer(s) | Message Payload Structure |
-| :--- | :--- | :--- | :--- |
-| **`order-events`** | `trading-service` | `matching-engine` | `id`, `user_id`, `symbol`, `side`, `order_type`, `price`, `quantity`, `action` ("CREATE"/"CANCEL") |
-| **`execution-reports`** | `matching-engine` | `trading-service`, `risk-engine-service`, `chart-service` | `id`, `symbol`, `maker_order_id`, `taker_order_id`, `maker_user_id`, `taker_user_id`, `price`, `quantity`, `taker_side` |
-| **`price-feed`** | `oracle-aggregator` | `risk-engine-service` | `symbol`, `index_price`, `mark_price`, `timestamp` |
-| **`liquidations`** | `risk-engine-service` | `trading-service`, `risk-engine-service` | `position_id`, `user_id`, `symbol`, `side`, `margin` |
+- Users deposit **USDC/USDT** to a **Solana smart contract** (Program ID: `HYcoTHLzYZiE5ok6cGoXBAbZSafxuf7aX4EGkQnFHHsM`) — funds sweep into a treasury ATA; balances tracked in PostgreSQL
+- Orders flow: `REST → gRPC → Kafka [order-events] → Matching Engine → Kafka [execution-reports] → Trading Service + API Gateway (WS push)`
+- Withdrawals trigger on-chain **SPL token transfers** from the treasury to user wallets
+- **Risk Engine** monitors every position on each price tick and liquidates positions breaching MMR = 0.5%
+- **Oracle Aggregator** derives mark/index price from live Binance + Coinbase spot feeds (average, every 500ms)
+- **Funding Rate** settles hourly: `clamp((perp − spot) / spot, −0.3%, +0.3%)`
 
 ---
 
-## 4. Key Transaction Flows
+## Architecture Diagram
 
-### Flow A: Place Order Flow
-This flow handles the placement of a new limit order, showing how margin locking is decoupled from order execution:
+```
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT LAYER                                          │
+│  Web Browser / Telegram Mini App / Tauri Desktop / TUI Client                     │
+│  REST HTTP/1.1  ·  WebSocket ws://  ·  WebTransport HTTP/3 QUIC UDP:4433          │
+└────────────────────────────────────┬───────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                  API GATEWAY  :8080 (REST+WS)  :4433/UDP (WebTransport)           │
+│  Actix-Web 4 HTTP  ·  actix-ws WebSocket  ·  wtransport (QUIC, self-signed TLS)  │
+│  Ed25519 challenge-response → JWT (24h)                                           │
+│  16-connection gRPC pool → Trading Service (AtomicUsize round-robin)              │
+│  Kafka consumer: execution-reports → fan-out to WS sessions                      │
+│  Redis Pub/Sub subscriber: trades:*, orderbook:*, private:*                      │
+└───┬──────────────┬─────────────────────┬─────────────────────────────────────────-┘
+    │gRPC          │gRPC                 │gRPC                    │gRPC
+    ▼              ▼                     ▼                        ▼
+┌──────────┐ ┌────────────────────┐ ┌───────────────┐ ┌────────────────────────┐
+│ MARKET   │ │  TRADING SERVICE   │ │ ACCOUNT       │ │  CHART SERVICE         │
+│ SERVICE  │ │  :50052 gRPC       │ │ SERVICE       │ │  :50058 gRPC           │
+│ :50051   │ │  :8082 metrics     │ │ :50053 gRPC   │ │  TimescaleDB           │
+│ Markets  │ │  Orders/Positions  │ │ Balances      │ │  Kafka: exec-reports   │
+│ Config   │ │  Trades/PnL        │ │ Transactions  │ │  OHLCV candles         │
+└──────────┘ └─────────┬──────────┘ └───────────────┘ └────────────────────────┘
+                       │ Kafka: order-events (Bincode)
+                       ▼
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                   APACHE KAFKA  (KRaft mode, no ZooKeeper)                        │
+│  order-events · execution-reports · price-feed · orderbook-depth                 │
+│  solana-deposits · withdrawal-requests · liquidations · user-notifications        │
+└────────────┬────────────────────────────┬─────────────────────────────────────────┘
+             │                            │
+  ┌──────────▼──────────┐    ┌────────────▼────────────────────────────┐
+  │  MATCHING ENGINE    │    │  RISK ENGINE SERVICE  :50057 gRPC       │
+  │  Per-symbol Tokio   │    │  RiskConsumer ← price-feed              │
+  │  worker tasks       │    │    checks every position each tick      │
+  │                     │    │    MMR=0.5% → publish [liquidations]   │
+  │  BTreeMap orderbook │    │  TradeConsumer: mirrors positions       │
+  │  O(log N) match     │    │  LiquidationConsumer: cleanup           │
+  │  O(log N) cancel    │    │  Funding loop: hourly settlement        │
+  │  O(1) cancel-lookup │    └─────────────────────────────────────────┘
+  └──────────┬──────────┘
+             │
+             ├── Kafka [execution-reports] ──▶ Trading Service (positions/orders/fees)
+             ├── Kafka [execution-reports] ──▶ API Gateway (WS push + user-notifications)
+             ├── Kafka [execution-reports] ──▶ Chart Service (OHLCV aggregation)
+             ├── Kafka [execution-reports] ──▶ Risk Engine (position mirror)
+             └── Redis Pub/Sub
+                   trades:<symbol>      ─ L2 depth + fills every 100ms
+                   orderbook:<symbol>
+                   private:<user_id>
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client
-    participant Gateway as api-gateway
-    participant Trading as trading-service
-    participant Account as account-service
-    participant Engine as matching-engine
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                     BLOCKCHAIN LAYER (Solana Devnet)                              │
+│                                                                                   │
+│  BLOCKCHAIN-LISTENER                     WITHDRAWAL-SIGNER                        │
+│  Polls RPC every 3s for ATA deltas       Kafka: withdrawal-requests               │
+│  (chunks of 100, SPL data[64..72])       Build SPL Transfer ix                    │
+│  → Kafka: solana-deposits                Sign with admin keypair                  │
+│  → On-chain sweep ix (opcode 0x01)       send_and_confirm on Solana               │
+│    funds move to treasury ATA            UPDATE DB: SUCCESS / FAILED+revert       │
+└────────────────────────────────────────────────────────────────────────────────────┘
 
-    Client->>Gateway: POST /api/v1/orders
-    Gateway->>Trading: gRPC: CreateOrder()
-    
-    rect rgb(30, 41, 59)
-        Note over Trading, Account: Sage Phase 1: Margin Locking
-        Trading->>Account: gRPC: LockMargin(amount = size * price / leverage)
-        Account-->>Trading: Success (Balance locked in database)
-    end
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                       SUPPORTING SERVICES                                         │
+│  ORACLE AGGREGATOR         BINANCE-LIQUIDATION       TELEGRAM-BOT                 │
+│  Binance WS + Coinbase WS  Binance futures liq       Notifications + trading      │
+│  → avg index price 500ms   → Kafka: binance-liq      gRPC: Trading + Account      │
+│  → Kafka: price-feed                                 Kafka: user-notifications    │
+│  → Redis: price-ticks                                                             │
+└────────────────────────────────────────────────────────────────────────────────────┘
 
-    Trading->>Trading: Insert Order into DB (Status = PENDING)
-    Trading->>Engine: Kafka: Publish to `order-events`
-    Trading-->>Gateway: Order ID & Status = OPEN
-    Gateway-->>Client: Returns JSON response
-    
-    rect rgb(15, 23, 42)
-        Note over Engine, Trading: Async Execution Path
-        Engine->>Engine: Process match in B-Tree Book
-        Engine->>Trading: Kafka: Publish trade/fill to `execution-reports`
-        Trading->>Trading: Update Order DB (Status = FILLED)
-        Trading->>Account: gRPC: ReleaseMargin() & AdjustMargin(Realized PnL)
-    end
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│  OBSERVABILITY: Prometheus → Grafana  ·  Jaeger (OTLP)  ·  cAdvisor             │
+│  INFRA: PostgreSQL 17 + PgBouncer (500 conns)  ·  Redis  ·  TimescaleDB         │
+└────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Flow B: Automatic Liquidation Waterfall
-This flow showcases how a bankrupt position is liquidated, executed against the orderbook, and protected by the Insurance Fund:
+## Service Catalog
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Oracle as oracle-aggregator
-    participant Risk as risk-engine-service
-    participant Trading as trading-service
-    participant Engine as matching-engine
-    participant Account as account-service
+| Service | Port(s) | Protocols | Role |
+|---|---|---|---|
+| **api-gateway** | `8080`, `4433/UDP` | REST, WebSocket, WebTransport | Single entry point for all clients |
+| **trading-service** | `50052` gRPC, `8082` metrics | gRPC, Kafka | Order placement, positions, PnL |
+| **account-service** | `50053` gRPC | gRPC, Kafka | Balances, deposits, withdrawals |
+| **market-service** | `50051` gRPC | gRPC | Market/symbol configuration |
+| **matching-engine** | `8086` metrics | Kafka, Redis | In-memory per-symbol orderbook |
+| **risk-engine-service** | `50057` gRPC | gRPC, Kafka | Margin checks, liquidations, funding rate |
+| **chart-service** | `50058` gRPC | gRPC, Kafka | OHLCV candles via TimescaleDB |
+| **oracle-aggregator** | — | WebSocket (ext), Kafka, Redis | Aggregates Binance + Coinbase |
+| **blockchain-listener** | — | Solana RPC, Kafka | Monitors on-chain ATA deposits |
+| **withdrawal-signer** | — | Kafka, Solana RPC | Signs & broadcasts SPL withdrawals |
+| **binance-liquidation** | — | Binance WS, Kafka | Binance futures liquidation relay |
+| **telegram-bot** | — | Telegram API, gRPC, Kafka | User notifications + bot trading |
 
-    Oracle->>Risk: Kafka: Publish price tick to `price-feed`
-    Risk->>Risk: Evaluates: Margin Balance < Maintenance Margin (0.5%)
-    Risk->>Trading: Kafka: Publish user details to `liquidations`
-    
-    rect rgb(45, 15, 15)
-        Note over Trading, Engine: Market Kill Order Routing
-        Trading->>Trading: Identify position size and opposite side
-        Trading->>Engine: Kafka: Publish MARKET order to `order-events`
-    end
+---
 
-    Engine->>Engine: Execute Market Order against live Bids/Asks
-    Engine->>Trading: Kafka: Publish fill details to `execution-reports`
+## Technology Stack
 
-    rect rgb(30, 41, 59)
-        Note over Trading, Account: Bankruptcy Settlement (Insurance Fund Payout)
-        Trading->>Account: gRPC: Release remaining margin
-        alt Final Balance is Negative (Deficit)
-            Trading->>Account: gRPC: Deduct deficit from global INSURANCE_FUND
-            Trading->>Account: gRPC: Inject deficit to bankrupt account (balance = $0)
-        else Final Balance is Positive (Clearance Fee)
-            Trading->>Account: gRPC: Deduct remaining balance and inject into INSURANCE_FUND
-        end
-    end
+| Layer | Technology | Why |
+|---|---|---|
+| **Language** | Rust (Edition 2024) | Zero-cost abstractions, memory safety, sub-ms latency |
+| **Async Runtime** | Tokio | Industry-standard Rust async runtime |
+| **HTTP** | Actix-Web 4 | High-performance actor-model HTTP server |
+| **gRPC** | Tonic 0.14 + Prost 0.14 | Type-safe Protobuf RPC |
+| **Message Broker** | Apache Kafka (KRaft) | Durable ordered event streaming, no ZooKeeper |
+| **Primary DB** | PostgreSQL 17 | ACID relational store |
+| **Connection Pool** | PgBouncer | Caps PG to 500 connections, high concurrency |
+| **Time-Series DB** | TimescaleDB | Efficient OHLCV candle storage and queries |
+| **Cache / PubSub** | Redis | Auth nonces, WS fan-out, price-tick pub/sub |
+| **Hot-path Serialization** | Bincode | 3-5x faster than JSON for order events |
+| **General Serialization** | JSON (serde_json) | All other Kafka payloads, REST responses |
+| **Blockchain** | Solana Devnet | SPL token custody, deposits, withdrawals |
+| **Metrics** | Prometheus + Grafana | Custom µs-resolution matching engine histograms |
+| **Tracing** | OpenTelemetry (OTLP) + Jaeger | Distributed request tracing |
+| **Container Metrics** | cAdvisor | Docker container resource monitoring |
+| **Allocator** | mimalloc | Faster allocations vs system malloc |
+| **HashMap** | FxHashMap (rustc-hash) | Faster hashing on hot-path order lookup |
+| **WebTransport** | wtransport 0.1.13 (QUIC/UDP) | Ultra-low latency alternative to WebSocket |
+
+---
+
+## Inter-Service Communication
+
+### gRPC (Synchronous, Internal)
+
+```
+API Gateway         ──gRPC──▶  Trading Service    (PlaceOrder, CancelOrder, GetPositions...)
+API Gateway         ──gRPC──▶  Account Service    (GetBalance, Withdraw, GetDepositAddress...)
+API Gateway         ──gRPC──▶  Market Service     (ListMarkets)
+API Gateway         ──gRPC──▶  Chart Service      (GetCandles)
+Trading Service     ──gRPC──▶  Market Service     (validate market on order placement)
+Trading Service     ──gRPC──▶  Account Service    (LockMargin, ReleaseMargin)
+Trading Service     ──gRPC──▶  Risk Engine        (CheckOrderMargin)
+Risk Engine         ──gRPC──▶  Account Service    (GetBalance for margin calculation)
+TradeConsumer       ──gRPC──▶  Account Service    (AdjustMargin for trading fees)
+FundingLoop         ──gRPC──▶  Account Service    (AdjustMargin for funding payments)
+LiquidationConsumer ──gRPC──▶  Account Service    (settle liquidated position margin)
+```
+
+### Kafka (Async, Event-Driven)
+
+```
+Trading Service      ──produce──▶ [order-events]        ──consume──▶ Matching Engine
+Matching Engine      ──produce──▶ [execution-reports]   ──consume──▶ Trading Service (positions)
+                                                         ──consume──▶ API Gateway (WS push)
+                                                         ──consume──▶ Chart Service (OHLCV)
+                                                         ──consume──▶ Risk Engine (position mirror)
+Oracle Aggregator    ──produce──▶ [price-feed]          ──consume──▶ Risk Engine (liq check)
+Risk Engine          ──produce──▶ [liquidations]        ──consume──▶ Trading Service (close pos)
+                                                         ──consume──▶ Risk Engine (cleanup)
+Blockchain Listener  ──produce──▶ [solana-deposits]     ──consume──▶ Account Service
+Account Service      ──produce──▶ [withdrawal-requests] ──consume──▶ Withdrawal Signer
+API Gateway          ──produce──▶ [user-notifications]  ──consume──▶ Telegram Bot
+```
+
+### Redis Pub/Sub (Near-Real-Time to WS Clients)
+
+```
+Matching Engine    ──PUBLISH──▶ trades:<symbol>    ◀──SUBSCRIBE── WS clients (fills)
+Matching Engine    ──PUBLISH──▶ orderbook:<symbol> ◀──SUBSCRIBE── WS clients (depth)
+Matching Engine    ──PUBLISH──▶ private:<user_id>  ◀──SUBSCRIBE── WS client (user)
+Oracle Aggregator  ──PUBLISH──▶ price-ticks        ◀──SUBSCRIBE── Trading trigger_loop
 ```
 
 ---
 
-### Flow C: Real-Time Candlestick Feed
-This flow details how candle feeds make their way from trades to client screens:
+## Kafka Topics
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Engine as matching-engine
-    participant Chart as chart-service
-    participant Redis as Redis Cache
-    participant Gateway as api-gateway
-    actor Client
+| Topic | Producer | Consumer(s) | Format | Notes |
+|---|---|---|---|---|
+| `order-events` | Trading Service | Matching Engine | **Bincode** | Hot path, binary speed |
+| `execution-reports` | Matching Engine | Trading, API GW, Chart, Risk | JSON | Core settlement event |
+| `price-feed` | Oracle Aggregator | Risk Engine | JSON | Every 500ms |
+| `orderbook-depth` | Matching Engine | (available) | JSON | L2 every 100ms |
+| `solana-deposits` | Blockchain Listener | Account Service | JSON | On-chain deposit detected |
+| `withdrawal-requests` | Account Service | Withdrawal Signer | JSON | Triggers SPL transfer |
+| `liquidations` | Risk Engine | Trading, Risk Engine | JSON | MMR breach detected |
+| `binance-liquidations` | Binance Liq Svc | (available) | JSON | Market context data |
+| `user-notifications` | API Gateway | Telegram Bot | JSON | Fill execution alerts |
 
-    Engine->>Chart: Kafka: Publish trade execution to `execution-reports`
-    Chart->>Chart: Aggregate trade price into 1m/5m/1h OHLCV buckets
-    Chart->>Redis: ZADD candle data to cache ZSET (`candles:{symbol}:{res}`)
-    Chart->>Redis: PUBLISH update to Redis Channel
-    Redis->>Gateway: Subscribed Channel receives tick
-    Gateway->>Client: Send candle payload over WebTransport / WebSocket
+---
+
+## gRPC Service Definitions
+
+### TradingService — `crates/proto/proto/trading.proto`
+```protobuf
+service TradingService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc GetPostions(GetPostionsRequest) returns (GetPositionsResponse);
+  rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
+  rpc GetTradeHistory(GetTradeHistoryRequest) returns (GetTradeHistoryResponse);
+  rpc AdjustPositionMargin(AdjustPositionMarginRequest) returns (AdjustPositionMarginResponse);
+}
+```
+
+### AccountService — `crates/proto/proto/account.proto`
+```protobuf
+service AccountService {
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc LockMargin(LockMarginRequest) returns (LockMarginResponse);
+  rpc ReleaseMargin(ReleaseMarginRequest) returns (ReleaseMarginResponse);
+  rpc AdjustMargin(AdjustMarginRequest) returns (AdjustMarginResponse);
+  rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
+  rpc GetDepositAddress(GetDepositAddressRequest) returns (GetDepositAddressResponse);
+  rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+}
+```
+
+### RiskService — `crates/proto/proto/risk.proto`
+```protobuf
+service RiskService {
+  rpc CheckOrderMargin(CheckOrderMarginRequest) returns (CheckOrderMarginResponse);
+  // Returns: approved (bool), required_margin, rejection_reason (optional)
+}
+```
+
+### ChartService — `crates/proto/proto/chart.proto`
+```protobuf
+// Serves OHLCV candle data from TimescaleDB
 ```
 
 ---
 
+## Client Connectivity
+
+### REST API — Port 8080
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/challenge` | None | Get Ed25519 nonce (60s TTL) |
+| `POST` | `/api/auth/login` | None | Submit signed nonce → JWT |
+| `GET` | `/api/auth/telegram-token` | JWT | Short-lived Telegram bridge token |
+| `GET` | `/api/account/:user_id/balance` | JWT | Available + locked balance |
+| `POST` | `/api/account/deposit` | JWT | Manual credit (test use) |
+| `POST` | `/api/account/withdraw` | JWT | Initiate on-chain withdrawal |
+| `GET` | `/api/account/:user_id/transactions` | JWT | Transaction history |
+| `GET` | `/api/account/:user_id/deposit-address` | JWT | User's Solana ATA addresses |
+| `POST` | `/api/trading/order` | JWT | Place order |
+| `POST` | `/api/trading/order/cancel` | JWT | Cancel order |
+| `GET` | `/api/trading/positions/:user_id` | JWT | Open positions |
+| `GET` | `/api/trading/orders/:user_id` | JWT | Open orders |
+| `GET` | `/api/trading/trades/:user_id` | JWT | Trade history |
+| `POST` | `/api/trading/position/margin` | JWT | Adjust isolated margin |
+| `GET` | `/api/market/markets` | None | List all markets |
+| `GET` | `/api/chart/:symbol/candles` | None | OHLCV data |
+| `GET` | `/metrics` | None | Prometheus metrics |
+| `GET` | `/health` | None | Health check |
+
+### WebSocket — `ws://host:8080/ws?token=<JWT>`
+
+```jsonc
+// Client → Server: subscribe to channels
+{ "action": "subscribe", "channels": ["trades:BTCUSDT", "orderbook:BTCUSDT", "private:<user_id>"] }
+
+// Server → Client: fills, depth updates, private execution reports (JSON)
+```
+
+Internals: each WS connection spawns a dedicated Redis Pub/Sub listener (`ws_router::handle_connection_pubsub`). The gateway also maintains `HashMap<user_id, Vec<(session_id, Session)>>` to push execution reports directly from the Kafka `execution-reports` consumer without an extra Redis roundtrip.
+
+### WebTransport — UDP port 4433 (HTTP/3 / QUIC)
+
+Same subscription protocol as WebSocket, but over QUIC bidirectional streams. Self-signed TLS certificate — SHA-256 fingerprint printed at startup. Lower latency than TCP WebSocket in high-jitter networks.
+
+---
+
+## Authentication Flow
+
+```
+Client                        API Gateway                       Redis
+  │                                │                               │
+  │─── POST /api/auth/challenge ───▶│                               │
+  │    { public_key: "B58..." }    │── SET challenge:<key> nonce ──▶│ (TTL 60s)
+  │◀── { nonce: "uuid-v4" } ───────│                               │
+  │                                │                               │
+  │  [Client signs: "Sign-in to Perpetuals Exchange: <nonce>"     │
+  │   using Ed25519 private key → signature_b58]                  │
+  │                                │                               │
+  │─── POST /api/auth/login ───────▶│── GET challenge:<key> ────────▶│
+  │    { public_key,               │◀── nonce ──────────────────────│
+  │      signature,                │── DEL challenge:<key> ─────────▶│
+  │      nonce }                   │                               │
+  │                                │  ed25519_dalek::verify(sig, msg, pubkey)
+  │                                │  user_id = UUID_v5(NAMESPACE_URL, pubkey_bytes)
+  │                                │  JWT { sub: user_id, pubkey, exp: now+24h }
+  │◀── { token: JWT, user_id } ────│
+  │                                │
+  │  All subsequent: Authorization: Bearer <JWT>
+```
+
+- **No passwords or emails** — pure wallet-based authentication
+- `user_id` is **deterministically derived** from the Ed25519 public key: `UUID_v5(NAMESPACE_URL, pubkey_b58_bytes)`
+
+---
+
+## Order Placement Flow
+
+```
+Client
+ │ POST /api/trading/order
+ │ { symbol, side, order_type, quantity, price, leverage, margin_mode,
+ │   reduce_only, post_only, trigger_price? }
+ ▼
+API Gateway
+ │ Validates JWT → extracts user_id
+ │ Round-robin picks 1 of 16 gRPC connections → Trading Service
+ ▼
+Trading Service — PlaceOrder gRPC Handler
+ │
+ ├─[1] MarketCache.get(symbol)
+ │     In-memory cache, seeded from Market Service at startup
+ │     → Returns market config (max_leverage, tick_size, min_qty...)
+ │
+ ├─[2] Validate leverage ≤ market.max_leverage AND leverage < 200
+ │
+ ├─[3] reduce_only check (if flag set):
+ │     Query positions → verify opposite side exists with size > 0
+ │     Sum existing reduce_only open orders for symbol+side
+ │     Reject if new_qty + existing_reduce_only_qty > position_size
+ │
+ ├─[4] Stop order validation (STOP_MARKET / STOP_LIMIT):
+ │     Require trigger_price
+ │     Compute trigger_direction:
+ │       BUY  + trigger > current_price → "ABOVE"  (breakout buy)
+ │       BUY  + trigger < current_price → "BELOW"  (dip buy)
+ │       SELL + trigger < current_price → "BELOW"  (stop-loss)
+ │       SELL + trigger > current_price → "ABOVE"  (take-profit)
+ │
+ ├─[5] gRPC → Risk Engine: CheckOrderMargin
+ │     Risk Engine computes:
+ │       net_open_qty = max(0, qty − opposite_position_size)   ← hedging offset
+ │       required_margin = (net_open_qty × price) / leverage
+ │       adjusted_available = available_balance + Σ(CROSS unrealized_pnl)
+ │     Returns: { approved, required_margin, rejection_reason? }
+ │
+ ├─[6] gRPC → Account Service: LockMargin(user_id, required_margin, order_id)
+ │     balance -= required_margin
+ │     frozen  += required_margin
+ │
+ ├─[7] INSERT order INTO orders
+ │     status = 'OPEN'             for LIMIT / MARKET
+ │     status = 'PENDING_TRIGGER'  for STOP_MARKET / STOP_LIMIT
+ │
+ ├─[8a] Regular order (LIMIT/MARKET):
+ │      Kafka PUBLISH [order-events] — Bincode serialized
+ │      { id, user_id, symbol, side, order_type, price, quantity,
+ │        action:"PLACE", timestamp:µs, leverage, reduce_only, post_only }
+ │      → Matching Engine picks it up
+ │
+ └─[8b] Stop order:
+        Stays PENDING_TRIGGER; trigger_loop activates when mark price crosses trigger
+
+ ◀── PlaceOrderResponse { order_id, status: "PLACED" }
+ ◀── HTTP 200 { order_id, status }
+```
+
+**API Gateway gRPC Pool**: The gateway maintains **16 persistent gRPC connections** to Trading Service and uses `AtomicUsize` round-robin to distribute load, avoiding single-connection bottlenecks under high concurrency.
+
+---
+
+## Order Cancellation Flow
+
+```
+Client
+ │ POST /api/trading/order/cancel { user_id, order_id, symbol }
+ ▼
+API Gateway → Trading Service gRPC: CancelOrder
+ ▼
+Trading Service
+ ├─ Fetch order from DB (verify ownership)
+ ├─ If status == 'PENDING_TRIGGER':
+ │    UPDATE status = 'CANCELLED'
+ │    gRPC → Account Service: ReleaseMargin
+ └─ If status == 'OPEN':
+      Kafka PUBLISH [order-events]:
+        { id: order_id, action: "CANCEL", side, ... }
+      Response: { success: true }
+
+Matching Engine — OrderConsumer
+ ├─ Receives CANCEL event from Kafka
+ ├─ book.cancel_order(order_id, side):
+ │    Step 1: FxHashMap orders.remove(&order_id)  → O(1) → (price, side, leverage)
+ │    Step 2: bids/asks.get_mut(&price)           → O(log N) BTreeMap
+ │    Step 3: level deque scan for order_id       → O(k) k=orders at that price
+ │    Step 4: deque.remove(pos)                   → O(k)
+ └─ Publish synthetic "CANCEL" trade to [execution-reports]
+
+Trading Service — TradeConsumer (execution-reports)
+ ├─ Detects taker_side == "CANCEL"
+ ├─ UPDATE orders SET status = 'CANCELLED'
+ └─ gRPC → Account Service: ReleaseMargin(user_id, margin, order_id)
+      margin_to_release = (quantity × price) / leverage
+```
+
+---
+
+## Matching Engine Deep Dive
+
+### Per-Symbol Worker Architecture
+
+The matching engine is **stateless across restarts** — the order book is rebuilt from live Kafka messages. A single Kafka consumer routes each order to an isolated per-symbol Tokio worker via mpsc channels.
+
+```
+Kafka [order-events]
+       │
+       ▼
+OrderConsumer::run()
+  Reads up to 10,000 messages per poll (now_or_never drain for batching)
+  FxHashMap<Symbol, mpsc::Sender<IncomingOrder>>
+  New symbol → tokio::spawn(symbol_worker(symbol, rx, producer))
+  Routes order to appropriate symbol's channel sender
+       │
+       ▼  (each symbol is fully isolated — no cross-symbol contention)
+symbol_worker(symbol, rx, producer)
+  Owns one OrderBook for this symbol
+  tokio::select! { order from rx | depth tick (100ms) }
+  Yields every 1,000 orders (tokio::task::yield_now) to avoid starvation
+  Spawns separate Tokio tasks for trade publishing and depth publishing
+```
+
+### OrderBook Data Structure
+
+```rust
+pub struct OrderBook {
+    pub symbol: String,
+    pub bids: BTreeMap<Decimal, VecDeque<BookOrder>>,  // best bid = last (max price)
+    pub asks: BTreeMap<Decimal, VecDeque<BookOrder>>,  // best ask = first (min price)
+    pub orders: FxHashMap<Uuid, (Decimal, OrderSide, u32)>,  // O(1) cancel lookup
+}
+```
+
+### Algorithmic Complexity
+
+| Operation | Complexity | Detail |
+|---|---|---|
+| **Place LIMIT order (no match)** | **O(log N)** | BTreeMap insert at price level |
+| **Place MARKET order (k fills)** | **O(k × log N)** | Each fill: O(log N) BTreeMap level access |
+| **Post-only check** | **O(log N)** | Peek best ask/bid without modifying |
+| **Cancel order** | **O(log N + k)** | O(1) FxHashMap → O(log N) BTreeMap → O(k) deque scan |
+| **Get L2 depth (10 levels)** | **O(10)** | BTreeMap `.iter().take(10)` |
+| **Full match sweep (empty book)** | **O(N log N)** | N = orders in book, each fill O(log N) |
+
+*N = number of distinct price levels; k = orders at a single price level*
+
+### Hot-Path Serialization: Bincode
+
+`order-events` uses **Bincode** (binary), not JSON. Bincode skips UTF-8 encoding overhead, produces compact fixed-width binary — ~3–5× faster than JSON for the matching engine's critical path. All other Kafka topics use JSON for debuggability.
+
+### Depth Updates
+
+Every **100ms** per symbol worker:
+1. `book.get_l2_depth(10)` → top 10 bid/ask levels
+2. Redis `PUBLISH orderbook:<symbol>` → WS clients receive instantly (sub-ms)
+3. Kafka `PRODUCE orderbook-depth` → durable record for late subscribers
+
+### Prometheus Metrics (µs-resolution)
+
+| Metric | Description |
+|---|---|
+| `order_match_pure_duration_seconds` | Pure BTreeMap matching algorithm time |
+| `order_cancel_pure_duration_seconds` | Pure cancel operation time |
+| `order_transit_duration_seconds` | Kafka send timestamp → matching engine start |
+| `order_channel_latency_seconds` | Kafka receive → symbol worker channel receive |
+| `kafka_poll_duration_seconds` | Time waiting for next Kafka batch |
+| `matching_duration_seconds` | Full order processing (channel receive → trade published) |
+| `publishing_ack_duration_seconds` | Time to publish trade + Redis pub/sub |
+| `orders_processed_total` | Counter by symbol and status |
+
+Histogram buckets: 1µs, 5µs, 10µs, 50µs, 100µs, 500µs, 1ms, 5ms, 10ms.
+
+---
+
+## Deposit Flow (Solana On-Chain)
+
+```
+User Wallet
+ │ Transfer USDC/USDT to User's custody ATA
+ ▼
+Solana Blockchain (Devnet)
+         │
+         │ (balance delta detected)
+         ▼
+BLOCKCHAIN-LISTENER (polling every 3 seconds)
+ ├─ Loads all custody ATAs from DB cache (refreshes every 10s for new users)
+ ├─ rpc.get_multiple_accounts(atas) in chunks of 100
+ ├─ Reads SPL token account raw data bytes [64..72] → u64 little-endian balance
+ ├─ Detects: new_balance > cached_balance
+ │   diff = new − cached  (in lamports → /1_000_000 for USDC/USDT 6 decimals)
+ │   tx_hash = latest confirmed tx signature for this ATA
+ ├─ Kafka PUBLISH [solana-deposits]:
+ │    { user_id, amount, asset, tx_hash }
+ └─ SIMULTANEOUSLY triggers on-chain sweep:
+      Instruction opcode 0x01 ("sweep")
+      Accounts: [state_pda, admin, user_ata, treasury_ata, spl_token, user_deposit_pda]
+      Data: [0x01, user_id_bytes (16 bytes)]
+      Signs with admin keypair → send_and_confirm_transaction
+      → funds moved from user_ata → treasury_ata (exchange-controlled)
+
+ACCOUNT SERVICE — DepositConsumer
+ Consumes [solana-deposits] (group: "account-service-deposit-group")
+ → account_service.adjust_margin(user_id, asset, amount, "DEPOSIT", tx_hash)
+ → INSERT transactions (type=DEPOSIT, status=SUCCESS, tx_hash)
+ → UPDATE accounts SET balance += amount WHERE user_id = $1 AND asset = $2
+```
+
+---
+
+## Withdrawal Flow (Solana On-Chain)
+
+```
+Client
+ │ POST /api/account/withdraw { user_id, amount, asset, destination_address }
+ ▼
+API Gateway → Account Service gRPC: Withdraw
+ ▼
+Account Service
+ ├─ Validate: accounts.balance >= amount
+ ├─ UPDATE accounts SET balance -= amount  (atomic)
+ ├─ INSERT transactions (type=WITHDRAWAL, status=PENDING, tx_id as tx_hash)
+ └─ Kafka PUBLISH [withdrawal-requests]:
+      { tx_id, user_id, asset, amount, destination_address }
+    Return { tx_hash: tx_id_pending, new_balance }
+
+WITHDRAWAL-SIGNER
+ ├─ Deserializes KafkaWithdrawalRequest
+ ├─ Compute user_dest_ata = get_associated_token_address(destination, mint)
+ ├─ If ATA doesn't exist: prepend create_associated_token_account ix
+ ├─ Build SPL Token Transfer instruction:
+ │    source:    treasury_ata  (exchange-controlled)
+ │    dest:      user_dest_ata
+ │    authority: admin_keypair
+ │    amount:    decimal × 1_000_000  (6-decimal SPL)
+ ├─ sign & send_and_confirm_transaction()
+ │
+ ├─ SUCCESS: UPDATE transactions SET status='SUCCESS', tx_hash=solana_sig
+ └─ FAILURE: revert_withdrawal()
+      BEGIN TX
+        UPDATE accounts SET balance += amount        ← credit back
+        UPDATE transactions SET status='FAILED', error_message=...
+      COMMIT
+```
+
+---
+
+## Liquidation Flow
+
+```
+Oracle Aggregator
+ │ Kafka PUBLISH [price-feed] every 500ms
+ │ { symbol, index_price, mark_price, timestamp }
+ ▼
+RISK ENGINE — RiskConsumer
+ ├─ Updates internal PriceTracker.spot_price
+ ├─ SELECT * FROM positions WHERE symbol = $1 AND size > 0
+ └─ For each position:
+      unrealized_pnl = size × (mark_price − entry_price)   [LONG]
+                     = size × (entry_price − mark_price)   [SHORT]
+      margin_balance = position.margin + unrealized_pnl
+      [CROSS mode]   margin_balance += account.available_balance (gRPC GetBalance)
+
+      maintenance_margin = size × mark_price × 0.005       (MMR = 0.5%)
+
+      IF margin_balance < maintenance_margin:
+        Kafka PUBLISH [liquidations]:
+          { position_id, user_id, symbol, side, size, entry_price, mark_price, margin }
+
+Kafka [liquidations]
+ ├─▶ TRADING SERVICE — LiquidationConsumer
+ │     ├─ Set position.size = 0 in DB
+ │     ├─ Cancel all open orders for this user+symbol
+ │     └─ gRPC → Account Service: AdjustMargin (settle remaining/lost margin)
+ │
+ └─▶ RISK ENGINE — LiquidationConsumer
+       └─ Delete/zero position in risk engine's DB mirror
+
+Liquidation Price Formulas:
+  LONG:  liq_price = entry_price × (1 − 1/leverage + MMR)
+  SHORT: liq_price = entry_price × (1 + 1/leverage − MMR)
+```
+
+---
+
+## Funding Rate Settlement
+
+**Frequency**: Every **1 hour** (3600s tokio::time::interval)
+
+```
+RISK ENGINE — funding_rate::funding_loop::run_funding_loop()
+ │
+ ├─ Get (spot_price, perp_price) from PriceTracker
+ ├─ base_rate = (perp_price − spot_price) / spot_price
+ ├─ funding_rate = clamp(base_rate, −0.003, +0.003)    // max ±0.3%
+ │
+ ├─ SELECT user_id, symbol, side, size FROM positions WHERE size > 0
+ │
+ └─ For each active position:
+      funding_fee = size × spot_price × funding_rate
+      adjustment  = −fee  (LONG pays when rate > 0, earns when rate < 0)
+                  = +fee  (SHORT earns when rate > 0, pays when rate < 0)
+
+      gRPC → Account Service: AdjustMargin(user_id, adjustment, "FUNDING")
+```
+
+---
+
+## Stop / Conditional Orders
+
+```
+Order types: STOP_MARKET, STOP_LIMIT
+
+Trading Service — PlaceOrder:
+  status = 'PENDING_TRIGGER'  (no margin locked, no Kafka event)
+  trigger_direction computed from price relation:
+    BUY  + trigger > current → "ABOVE"   BUY  + trigger < current → "BELOW"
+    SELL + trigger < current → "BELOW"   SELL + trigger > current → "ABOVE"
+
+TRADING SERVICE — trigger_loop (Redis SUBSCRIBE price-ticks)
+  On each price tick for symbol:
+    SELECT * FROM orders
+      WHERE symbol = $1 AND status = 'PENDING_TRIGGER'
+        AND ((trigger_direction='ABOVE' AND mark_price >= trigger_price)
+          OR (trigger_direction='BELOW' AND mark_price <= trigger_price))
+
+    For each triggered order:
+      ├─ reduce_only: re-validate position still open, size sufficient
+      ├─ gRPC → Risk Engine: CheckOrderMargin
+      ├─ gRPC → Account Service: LockMargin
+      ├─ UPDATE orders SET status = 'OPEN'
+      └─ Kafka PUBLISH [order-events] action="PLACE"
+           → Enters normal matching flow
+```
+
+---
+
+## Price Oracle & Mark Price
+
+```
+Binance Spot WS  (wss://stream.binance.com:9443/ws/btcusdt@ticker)
+  │ "c" field (last price) → binance_price: Arc<Mutex<Option<Decimal>>>
+
+Coinbase Spot WS (wss://ws-feed.exchange.coinbase.com, BTC-USD ticker)
+  │ "price" field → coinbase_price: Arc<Mutex<Option<Decimal>>>
+
+Every 500ms (tokio::time::interval):
+  index_price = (binance + coinbase) / 2      both available
+              = binance_price                  coinbase unavailable
+              = coinbase_price                 binance unavailable
+
+  PriceTick { symbol: "BTCUSDT", index_price, mark_price: index_price, timestamp }
+    → Kafka [price-feed]     consumed by Risk Engine for liquidation checks
+    → Redis PUBLISH price-ticks   consumed by trigger_loop in Trading Service
+
+Auto-reconnects with 5-second backoff on WS disconnect.
+```
+
+---
+
+## Database Design
+
+### PostgreSQL — Account Service (`perps_accounts`)
+
+```sql
+-- User balances
+CREATE TABLE accounts (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL, asset VARCHAR(16) NOT NULL,
+    balance NUMERIC(38,18) NOT NULL DEFAULT 0,  -- available balance
+    frozen  NUMERIC(38,18) NOT NULL DEFAULT 0,  -- locked in open orders
+    UNIQUE (user_id, asset)
+);
+
+-- All financial transactions
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL, asset VARCHAR(16),
+    amount NUMERIC(38,18), transaction_type VARCHAR(32),
+    -- DEPOSIT | WITHDRAWAL | FUNDING | CLEARANCE_FEE
+    status VARCHAR(16),  -- PENDING | SUCCESS | FAILED
+    tx_hash VARCHAR(128), error_message VARCHAR(512), created_at TIMESTAMPTZ
+);
+
+-- Per-user Solana ATA addresses
+CREATE TABLE custody_addresses (
+    user_id UUID, usdc_ata VARCHAR(64), usdt_ata VARCHAR(64)
+);
+
+-- Telegram bot user mappings
+CREATE TABLE telegram_user_mappings (
+    telegram_id BIGINT, user_id UUID, ...
+);
+```
+
+### PostgreSQL — Trading Service (`perps_trading`)
+
+```sql
+-- Orders (all types, all statuses)
+CREATE TABLE orders (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL,
+    symbol VARCHAR(20), side VARCHAR(10),           -- BUY | SELL
+    order_type VARCHAR(10),                         -- LIMIT | MARKET | STOP_MARKET | STOP_LIMIT
+    price NUMERIC, quantity NUMERIC,
+    status VARCHAR(20),                             -- OPEN|FILLED|CANCELLED|PENDING_TRIGGER|REJECTED|FAILED
+    leverage INT, trigger_price NUMERIC,
+    trigger_direction VARCHAR(10),                  -- ABOVE | BELOW
+    reduce_only BOOLEAN, margin_mode VARCHAR(16),   -- ISOLATED | CROSS
+    post_only BOOLEAN,
+    created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ,
+    INDEX idx_orders_user_status (user_id, status)
+);
+
+-- Open positions
+CREATE TABLE positions (
+    id UUID PRIMARY KEY, user_id UUID NOT NULL,
+    symbol VARCHAR(32), side VARCHAR(16),           -- LONG | SHORT
+    size NUMERIC(38,18), entry_price NUMERIC(38,18),
+    margin NUMERIC(38,18), leverage INT,
+    liquidation_price NUMERIC(38,18),
+    unrealized_pnl NUMERIC(38,18), realized_pnl NUMERIC(38,18),
+    margin_mode VARCHAR(16),                        -- ISOLATED | CROSS
+    UNIQUE idx_user_symbol_side (user_id, symbol, side)
+);
+
+-- Executed trades
+CREATE TABLE trades (
+    id UUID PRIMARY KEY, order_id UUID, user_id UUID,
+    symbol VARCHAR(32), side VARCHAR(10),
+    price NUMERIC(38,18), quantity NUMERIC(38,18),
+    fee NUMERIC(38,18),   -- maker: 0.02%, taker: 0.05%
+    executed_at TIMESTAMPTZ
+);
+```
+
+### TimescaleDB — Chart Service (port 5433, `perps_charts`)
+
+- Hypertable `trades` partitioned by `executed_at`
+- Used to compute OHLCV candles via time_bucket() queries
+- Served via ChartService gRPC to API Gateway → clients
+
+### Redis Key Patterns
+
+| Key Pattern | Type | TTL | Purpose |
+|---|---|---|---|
+| `challenge:<pubkey>` | String | 60s | Ed25519 auth nonce |
+| `telegram_token:<token>` | String | 300s | Telegram bridge token |
+| `trades:<symbol>` | Pub/Sub | — | Real-time fill broadcast |
+| `orderbook:<symbol>` | Pub/Sub | — | L2 depth updates |
+| `private:<user_id>` | Pub/Sub | — | User-specific fill events |
+| `price-ticks` | Pub/Sub | — | Mark price for stop order trigger_loop |
+
+---
+
+## Observability Stack
+
+| Tool | Port | Purpose |
+|---|---|---|
+| **Prometheus** | `9090` | Scrapes `/metrics` from all services every 15s |
+| **Grafana** | `3000` | Pre-provisioned dashboards (`admin/admin`) |
+| **Jaeger** | `16686` UI, `4317` OTLP | Distributed tracing (matching engine instrumented) |
+| **cAdvisor** | `8089` | Docker container CPU/memory/network metrics |
+
+Every service exposes `/metrics` via `telemetry::http::HttpMetrics` middleware (Actix-Web) or `telemetry::http::spawn_metrics_server(port)` on a background thread.
+
+---
+
+## Scaling Guide
+
+### Independently Scalable (Stateless Services)
+
+| Service | Strategy | Notes |
+|---|---|---|
+| **API Gateway** | N instances behind LB | WS via Redis Pub/Sub (already implemented). Use sticky sessions or Redis session store for WS state |
+| **Trading Service** | N instances, same Kafka consumer group | MarketCache seeds at startup; all balance ops are atomic DB txns |
+| **Account Service** | N instances | Pure gRPC + DB; Postgres advisory locks handle concurrent updates |
+| **Market Service** | N instances | Read-heavy; add Redis caching layer if needed |
+| **Risk Engine** | N instances (redundant checks) | Duplicate liquidation events are idempotent; position state deduped by Postgres |
+| **Chart Service** | N instances | TimescaleDB handles concurrent reads well |
+| **Oracle Aggregator** | N instances | Duplicate Kafka messages are idempotent for consumers |
+
+### Requires Special Care (Singleton / External Side Effects)
+
+| Service | Why | HA Strategy |
+|---|---|---|
+| **Blockchain Listener** | On-chain sweep ix would double-sweep if duplicated | Redis `SETNX` leader election; only leader polls + sweeps |
+| **Withdrawal Signer** | Same Solana keypair; concurrent txns cause nonce conflicts | Serial Kafka consumption (single partition) OR leader election |
+
+### Matching Engine Horizontal Scaling
+
+Currently 1 instance; internally parallel by symbol via Tokio tasks.
+
+**To scale across multiple hosts:**
+1. Add **N partitions** to Kafka `order-events` topic (currently 1)
+2. Deploy **N matching engine instances** — Kafka consumer group assigns each instance a disjoint set of partitions (and thus symbols)
+3. Redis Pub/Sub works unchanged — each instance publishes directly to `trades:<symbol>` and `orderbook:<symbol>`
+
+### Infrastructure Scaling
+
+| Component | Strategy |
+|---|---|
+| **PostgreSQL** | Read replicas for queries; Citus for sharding |
+| **PgBouncer** | Multiple instances pointing to same PG primary |
+| **Kafka** | Add brokers + increase partition count; replication factor ≥ 2 |
+| **Redis** | Redis Cluster for Pub/Sub at scale |
+| **TimescaleDB** | Distributed hypertables across multiple nodes |
+
+---
+
+## Running Locally
+
+### Prerequisites
+- Docker + Docker Compose
+- Rust toolchain (see `rust-toolchain.toml`)
+- (Optional) Solana CLI for on-chain testing
+
+### Start All Services
+
+```bash
+docker compose -f docker-compose.all.yaml up -d
+```
+
+### Local Service URLs
+
+| Service | URL |
+|---|---|
+| API Gateway | `http://localhost:8080` |
+| WebTransport | `udp://localhost:4433` |
+| Grafana | `http://localhost:3000` (admin / admin) |
+| Prometheus | `http://localhost:9090` |
+| Jaeger | `http://localhost:16686` |
+| Kafka | `localhost:9092` |
+| PostgreSQL | `localhost:5432` (PgBouncer: `6432`) |
+| TimescaleDB | `localhost:5433` |
+| Redis | `localhost:6379` |
+
+### Build Without Docker
+
+```bash
+cargo build --release
+
+# Run individual services
+cargo run --bin api-gateway
+cargo run --bin trading-service
+cargo run --bin matching-engine
+cargo run --bin account-service
+cargo run --bin market-service
+cargo run --bin risk-engine-service
+cargo run --bin chart-service
+cargo run --bin oracle-aggregator
+cargo run --bin blockchain-listener
+cargo run --bin withdrawal-signer
+cargo run --bin telegram-bot
+```
+
+### Key Environment Variables
+
+| Variable | Default | Used By |
+|---|---|---|
+| `DATABASE__HOST` | `localhost` | All DB services |
+| `REDIS__HOST` | `localhost` | All |
+| `KAFKA_BROKERS` | `localhost:9092` | All |
+| `MARKET_SERVICE_URL` | `http://127.0.0.1:50051` | API GW, Trading |
+| `ACCOUNT_SERVICE_URL` | `http://127.0.0.1:50053` | API GW, Trading, Risk |
+| `TRADING_SERVICE_URL` | `http://127.0.0.1:50052` | API GW, Risk |
+| `RISK_SERVICE_URL` | `http://127.0.0.1:50057` | Trading |
+| `CHART_SERVICE_URL` | `http://127.0.0.1:50058` | API GW |
+| `JWT_SECRET` | `default_secret_key_change_me` | API GW |
+| `SOLANA_RPC_URL` | Helius Devnet endpoint | Blockchain Listener, Withdrawal Signer |
+| `CUSTODY_PROGRAM_ID` | `HYcoTHLzYZiE5ok6cGoXBAbZSafxuf7aX4EGkQnFHHsM` | Account, Blockchain Listener |
+| `CUSTODY_TREASURY_USDC_ATA` | Treasury ATA address | Withdrawal Signer |
+| `ADMIN_KEYPAIR_PATH` | Path to Solana keypair JSON | Blockchain Listener, Withdrawal Signer |
+| `OTLP_ENDPOINT` | `http://jaeger:4317` | Matching Engine |
+| `TELOXIDE_TOKEN` | Bot token | Telegram Bot |
+
+---
+
+## Project Structure
+
+```
+perps-exchange/
+├── Cargo.toml                      # Workspace (all services + crates)
+├── docker-compose.all.yaml         # Full-stack Docker Compose
+├── Dockerfile                      # Multi-binary Rust Docker image
+├── rust-toolchain.toml             # Pinned Rust toolchain
+│
+├── crates/                         # Shared libraries
+│   ├── proto/                      # Protobuf definitions + Tonic-generated code
+│   │   └── proto/
+│   │       ├── account.proto       # AccountService gRPC API
+│   │       ├── trading.proto       # TradingService gRPC API
+│   │       ├── risk.proto          # RiskService gRPC API
+│   │       ├── market.proto        # MarketService gRPC API
+│   │       └── chart.proto         # ChartService gRPC API
+│   ├── telemetry/                  # Prometheus metrics, OTLP tracing, HTTP/gRPC middleware
+│   ├── database/                   # SQLx pool DatabaseManager wrapper
+│   ├── config/                     # AppConfig loader (TOML + env vars)
+│   ├── common/                     # Shared utilities
+│   ├── types/                      # Shared domain types
+│   ├── errors/                     # Shared error types
+│   ├── load-tester/                # Load testing binary
+│   ├── tui-client/                 # Terminal UI trading client
+│   └── desktop-client/             # Tauri desktop app
+│
+├── services/
+│   ├── api-gateway/                # REST + WebSocket + WebTransport gateway
+│   │   └── src/
+│   │       ├── presentation/
+│   │       │   ├── handlers/
+│   │       │   │   ├── auth_handler.rs      # Ed25519 challenge-response + JWT
+│   │       │   │   ├── trading_handler.rs   # Order placement/cancel handlers
+│   │       │   │   ├── account_handler.rs   # Balance/deposit/withdraw handlers
+│   │       │   │   ├── ws_handler.rs        # WebSocket upgrade + session mgmt
+│   │       │   │   ├── ws_router.rs         # Redis Pub/Sub → WS fan-out
+│   │       │   │   └── wt_server.rs         # WebTransport server (QUIC)
+│   │       │   └── rest/routes.rs           # Actix-Web route registration
+│   │       └── infrastructure/kafka/
+│   │           └── trade_consumer.rs        # execution-reports → WS push + notifications
+│   │
+│   ├── trading-service/            # Order placement, position management
+│   │   └── src/
+│   │       ├── grpc/server.rs      # TradingService gRPC implementation
+│   │       ├── infrastructure/
+│   │       │   ├── kafka/
+│   │       │   │   ├── producer.rs             # OrderProducer → order-events (Bincode)
+│   │       │   │   ├── trading_consumer.rs     # TradeConsumer ← execution-reports
+│   │       │   │   ├── liquidation_consumer.rs # LiquidationConsumer ← liquidations
+│   │       │   │   └── trigger_loop.rs         # Stop order trigger (Redis price-ticks)
+│   │       │   ├── cache/market_cache.rs       # In-memory market config
+│   │       │   ├── grpc/
+│   │       │   │   ├── account_client.rs       # gRPC client for Account Service
+│   │       │   │   ├── market_client.rs        # gRPC client for Market Service
+│   │       │   │   └── risk_client.rs          # gRPC client for Risk Engine
+│   │       │   └── repositories/               # Order, Position, Trade (SQLx)
+│   │       └── application/services/
+│   │           └── position_service.rs         # PnL calc, position upsert, fee deduction
+│   │
+│   ├── matching-engine/            # In-memory per-symbol orderbook
+│   │   └── src/
+│   │       ├── application/services/
+│   │       │   └── matching_service.rs   # OrderBook: BTreeMap<Decimal, VecDeque<BookOrder>>
+│   │       ├── domain/entities/          # BookOrder, Trade
+│   │       └── infrastructure/kafka/
+│   │           ├── consumer.rs           # OrderConsumer + per-symbol symbol_worker tasks
+│   │           └── producer.rs           # TradeProducer (Kafka + Redis Pub/Sub)
+│   │
+│   ├── account-service/            # Balance management, deposits, withdrawals
+│   │   └── src/
+│   │       ├── grpc/               # AccountService gRPC server impl
+│   │       └── infrastructure/kafka/
+│   │           └── deposit_consumer.rs  # DepositConsumer ← solana-deposits
+│   │
+│   ├── risk-engine-service/        # Margin checks, liquidations, funding rate
+│   │   └── src/
+│   │       ├── grpc/server.rs      # RiskService: CheckOrderMargin gRPC
+│   │       ├── infrastructure/kafka/
+│   │       │   ├── consumer.rs     # RiskConsumer ← price-feed (liquidation check loop)
+│   │       │   ├── trade_consumer.rs
+│   │       │   ├── liquidation_consumer.rs
+│   │       │   └── producer.rs     # LiquidationProducer → liquidations topic
+│   │       ├── funding_rate/
+│   │       │   └── funding_loop.rs # Hourly funding rate settlement
+│   │       └── price_tracker/      # In-memory spot/perp price (Arc<RwLock>)
+│   │
+│   ├── market-service/             # Market/symbol config (gRPC + REST metrics)
+│   ├── chart-service/              # OHLCV candles (TimescaleDB + gRPC)
+│   ├── oracle-aggregator/          # Binance + Coinbase WebSocket price aggregation
+│   ├── blockchain-listener/        # Solana ATA polling + on-chain sweep triggers
+│   ├── withdrawal-signer/          # SPL token transfer signing + broadcasting
+│   ├── binance-liquidation/        # Binance futures liquidation stream relay
+│   └── telegram-bot/               # Telegram Mini App + trading bot
+│
+├── exchange-custody-contract/      # Solana smart contract (Rust, custom program)
+├── custody-test-frontend/          # React frontend for custody contract testing
+├── configs/                        # PgBouncer config, TOML service configs
+└── docker/                         # Prometheus, Grafana, Jaeger Docker configs
+```
+
+---
+
+## Fee Structure
+
+| Role | Rate | Formula |
+|---|---|---|
+| **Maker** | 0.02% | `quantity × price × 0.0002` |
+| **Taker** | 0.05% | `quantity × price × 0.0005` |
+
+Fees are collected via `AccountService.AdjustMargin` with `transaction_type = "CLEARANCE_FEE"`.
+
+## Order Types & Flags
+
+| Order Type | Behavior |
+|---|---|
+| `LIMIT` | Resting order at specified price; participates in book |
+| `MARKET` | Matches immediately against best available opposite side |
+| `STOP_MARKET` | Triggers a market order when mark price crosses `trigger_price` |
+| `STOP_LIMIT` | Triggers a limit order when mark price crosses `trigger_price` |
+
+| Flag | Meaning |
+|---|---|
+| `reduce_only` | Can only reduce existing position; cannot open new exposure |
+| `post_only` | Cancelled if would match immediately (guarantees maker fee) |
+| `leverage` | 1× to market max (hard cap: 199×, enforced in Trading Service) |
+| `margin_mode` | `ISOLATED` = fixed margin per position; `CROSS` = shared account balance |
+
+---
+
+*Built in Rust by Dhruvil Patel*
