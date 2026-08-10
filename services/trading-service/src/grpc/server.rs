@@ -110,7 +110,7 @@ impl GrpcTradingService for TradingGrpcService {
 
             let open_orders = self
                 .order_repository
-                .list_open_by_user(user_id)
+                .list_open_by_user(user_id, None, None)
                 .await
                 .map_err(|e| Status::internal(e.to_string()))?;
             let existing_reduce_only_qty: Decimal = open_orders
@@ -441,7 +441,7 @@ impl GrpcTradingService for TradingGrpcService {
 
         let orders = self
             .order_repository
-            .list_open_by_user(user_id)
+            .list_open_by_user(user_id, req.page, req.limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -471,7 +471,7 @@ impl GrpcTradingService for TradingGrpcService {
 
         let trades = self
             .trade_repository
-            .list_by_user(user_id)
+            .list_by_user(user_id, req.page, req.limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

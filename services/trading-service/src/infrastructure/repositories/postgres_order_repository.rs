@@ -69,15 +69,23 @@ impl OrderRepository for PostgresOrderRepository {
         Ok(())
     }
 
-    async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>> {
+    async fn list_open_by_user(&self, user_id: Uuid, page: Option<i32>, limit: Option<i32>) -> Result<Vec<OrderEntity>> {
+        let page = page.unwrap_or(1).max(1);
+        let limit = limit.unwrap_or(50).max(1).min(100);
+        let offset = (page - 1) * limit;
+
         let rows = sqlx::query(
             r#"
             SELECT id, user_id, symbol, side, order_type, price, quantity, status, leverage, trigger_price, trigger_direction, reduce_only, margin_mode, post_only
             FROM orders
             WHERE user_id = $1 AND status = 'OPEN'
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
             "#,
         )
         .bind(user_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
         .fetch_all(&self.pool)
         .await?;
 

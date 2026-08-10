@@ -107,7 +107,7 @@ impl GrpcAccountService for AccountGrpcService {
 
         let txs = self
             .service
-            .get_transaction_history(user_id)
+            .get_transaction_history(user_id, req.page, req.limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

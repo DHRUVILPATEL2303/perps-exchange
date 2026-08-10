@@ -94,9 +94,16 @@ pub async fn withdraw_funds(
     }
 }
 
+#[derive(Deserialize)]
+pub struct PaginationQuery {
+    pub page: Option<i32>,
+    pub limit: Option<i32>,
+}
+
 pub async fn get_transaction_history(
     state: Data<AppState>,
     path: Path<Uuid>,
+    query: Query<PaginationQuery>,
     user: AuthenticatedUser,
 ) -> HttpResponse {
     let user_id = path.into_inner();
@@ -106,6 +113,8 @@ pub async fn get_transaction_history(
     let mut client = state.account_client.clone();
     let grpc_req = GetTransactionHistoryRequest {
         user_id: user_id.to_string(),
+        page: query.page,
+        limit: query.limit,
     };
     match client.get_transaction_history(grpc_req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner().transactions),

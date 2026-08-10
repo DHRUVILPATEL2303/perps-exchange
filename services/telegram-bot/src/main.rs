@@ -550,6 +550,8 @@ async fn handle_command(
             let res = client
                 .get_trade_history(proto::trading::GetTradeHistoryRequest {
                     user_id: user_id.clone(),
+                    page: None,
+                    limit: None,
                 })
                 .await;
 
@@ -625,6 +627,8 @@ async fn handle_command(
             let res = client
                 .get_transaction_history(proto::account::GetTransactionHistoryRequest {
                     user_id: user_id.clone(),
+                    page: None,
+                    limit: None,
                 })
                 .await;
 

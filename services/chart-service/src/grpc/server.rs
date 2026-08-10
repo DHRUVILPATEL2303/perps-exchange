@@ -1,5 +1,6 @@
 use proto::chart::{
-    CandleInfo, GetCandlesRequest, GetCandlesResponse, GetTickerRequest, GetTickerResponse, chart_service_server::ChartService as GrpcChartService,
+    CandleInfo, GetCandlesRequest, GetCandlesResponse, GetTickerRequest, GetTickerResponse,
+    chart_service_server::ChartService as GrpcChartService,
 };
 use sqlx::{PgPool, Row};
 use tonic::{Request, Response, Status};
@@ -38,21 +39,21 @@ impl GrpcChartService for ChartGrpcService {
         let response = match row {
             None => {
                 let last_known = sqlx::query(
-                    "SELECT price FROM trades WHERE symbol = $1 ORDER BY time DESC LIMIT 1"
+                    "SELECT price FROM trades WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
                 )
                 .bind(&symbol)
                 .fetch_optional(&self.db_pool)
                 .await
                 .map_err(|e| Status::internal(format!("Fallback ticker error: {:?}", e)))?;
-            
+
                 let last_price = last_known
                     .and_then(|r| r.try_get::<rust_decimal::Decimal, _>("price").ok())
                     .unwrap_or(rust_decimal::Decimal::ZERO)
                     .to_string();
-            
+
                 GetTickerResponse {
                     symbol,
-                    last_price,           
+                    last_price,
                     price_change_24h: "0".to_string(),
                     price_change_pct_24h: "0".to_string(),
                     high_24h: "0".to_string(),
@@ -62,7 +63,6 @@ impl GrpcChartService for ChartGrpcService {
                     trade_count_24h: 0,
                 }
             }
-,
             Some(row) => {
                 let open: Option<rust_decimal::Decimal> = row.try_get("open_24h").ok();
                 let last: Option<rust_decimal::Decimal> = row.try_get("last_price").ok();

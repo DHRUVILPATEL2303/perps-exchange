@@ -25,6 +25,6 @@ pub struct OrderEntity {
 pub trait OrderRepository: Send + Sync {
     async fn create(&self, order: OrderEntity) -> Result<OrderEntity>;
     async fn update_status(&self, id: Uuid, status: &str) -> Result<()>;
-    async fn list_open_by_user(&self, user_id: Uuid) -> Result<Vec<OrderEntity>>;
+    async fn list_open_by_user(&self, user_id: Uuid, page: Option<i32>, limit: Option<i32>) -> Result<Vec<OrderEntity>>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<OrderEntity>>;
 }

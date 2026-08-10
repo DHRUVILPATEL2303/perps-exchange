@@ -40,16 +40,23 @@ impl TradeRepository for PostgresTradeRepository {
         Ok(created)
     }
 
-    async fn list_by_user(&self, user_id: Uuid) -> Result<Vec<Trade>, RepositoryError> {
+    async fn list_by_user(&self, user_id: Uuid, page: Option<i32>, limit: Option<i32>) -> Result<Vec<Trade>, RepositoryError> {
+        let page = page.unwrap_or(1).max(1);
+        let limit = limit.unwrap_or(50).max(1).min(100);
+        let offset = (page - 1) * limit;
+
         let trades = sqlx::query_as::<_, Trade>(
             r#"
             SELECT id, order_id, user_id, symbol, side, price, quantity, fee, executed_at
             FROM trades
             WHERE user_id = $1
             ORDER BY executed_at DESC
+            LIMIT $2 OFFSET $3
             "#,
         )
         .bind(user_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
         .fetch_all(&self.pool)
         .await?;
 

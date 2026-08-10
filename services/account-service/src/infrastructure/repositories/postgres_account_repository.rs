@@ -346,16 +346,25 @@ impl AccountRepository for PostgresAccountRepository {
     async fn list_transactions_by_user(
         &self,
         user_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
     ) -> Result<Vec<Transaction>, RepositoryError> {
+        let page = page.unwrap_or(1).max(1);
+        let limit = limit.unwrap_or(50).max(1).min(100);
+        let offset = (page - 1) * limit;
+
         let rows = sqlx::query_as::<_, Transaction>(
             r#"
             SELECT id, user_id, asset, amount, transaction_type, status, tx_hash, created_at
             FROM transactions
             WHERE user_id = $1
             ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
             "#,
         )
         .bind(user_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)

@@ -61,6 +61,8 @@ message PositionInfo {
 
 message GetOpenOrdersRequest {
     string user_id = 1;
+    optional int32 page = 2;
+    optional int32 limit = 3;
 }
 message GetOpenOrdersResponse {
     repeated OrderInfo orders = 1;
@@ -77,6 +79,8 @@ message OrderInfo {
 
 message GetTradeHistoryRequest {
     string user_id = 1;
+    optional int32 page = 2;
+    optional int32 limit = 3;
 }
 message GetTradeHistoryResponse {
     repeated TradeInfo trades = 1;

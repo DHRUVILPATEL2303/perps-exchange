@@ -15,7 +15,7 @@ pub trait AccountRepository: Send + Sync {
     async fn adjust_margin_atomic(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal, adjustment_type: &str, tx_hash: Option<String>) -> Result<Account, RepositoryError>;
 
     async fn create_transaction(&self, tx: crate::domain::entities::transaction::Transaction) -> Result<crate::domain::entities::transaction::Transaction, RepositoryError>;
-    async fn list_transactions_by_user(&self, user_id: Uuid) -> Result<Vec<crate::domain::entities::transaction::Transaction>, RepositoryError>;
+    async fn list_transactions_by_user(&self, user_id: Uuid, page: Option<i32>, limit: Option<i32>) -> Result<Vec<crate::domain::entities::transaction::Transaction>, RepositoryError>;
     async fn initiate_withdrawal(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal) -> Result<(Account, Uuid), RepositoryError>;
     async fn update_transaction_status_and_hash(&self, id: Uuid, status: &str, tx_hash: Option<String>) -> Result<(), RepositoryError>;
     async fn revert_withdrawal(&self, user_id: Uuid, asset: &str, amount: rust_decimal::Decimal, tx_id: Uuid, error_msg: &str) -> Result<Account, RepositoryError>;

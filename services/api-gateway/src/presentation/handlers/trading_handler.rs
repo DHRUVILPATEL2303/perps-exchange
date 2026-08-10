@@ -1,14 +1,20 @@
-use actix_web::web::{Data, Json, Path};
-use actix_web::HttpResponse;
-use crate::state::AppState;
 use crate::presentation::handlers::auth_handler::AuthenticatedUser;
+use crate::state::AppState;
+use actix_web::HttpResponse;
+use actix_web::web::{Data, Json, Path, Query};
 use proto::trading::{
-    PlaceOrderRequest, CancelOrderRequest, GetPostionsRequest, GetOpenOrdersRequest,
+    CancelOrderRequest, GetOpenOrdersRequest, GetPostionsRequest, PlaceOrderRequest,
 };
-use uuid::Uuid;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-#[derive(Deserialize,Serialize)]
+#[derive(Deserialize)]
+pub struct PaginationQuery {
+    pub page: Option<i32>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct HTTPPlaceOrderRequest {
     pub user_id: Uuid,
     pub symbol: String,
@@ -40,7 +46,10 @@ pub async fn get_positions(
     if user.user_id != user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let req = GetPostionsRequest {
         user_id: user_id.to_string(),
@@ -60,7 +69,10 @@ pub async fn place_order(
     if user.user_id != req.user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let grpc_req = PlaceOrderRequest {
         user_id: req.user_id.to_string(),
@@ -91,7 +103,10 @@ pub async fn cancel_order(
     if user.user_id != req.user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let grpc_req = CancelOrderRequest {
         user_id: req.user_id.to_string(),
@@ -107,16 +122,22 @@ pub async fn cancel_order(
 pub async fn get_open_orders(
     state: Data<AppState>,
     path: Path<Uuid>,
+    query: Query<PaginationQuery>,
     user: AuthenticatedUser,
 ) -> HttpResponse {
     let user_id = path.into_inner();
     if user.user_id != user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let grpc_req = GetOpenOrdersRequest {
         user_id: user_id.to_string(),
+        page: query.page,
+        limit: query.limit,
     };
     match client.get_open_orders(grpc_req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner().orders),
@@ -127,16 +148,22 @@ pub async fn get_open_orders(
 pub async fn get_trade_history(
     state: Data<AppState>,
     path: Path<Uuid>,
+    query: Query<PaginationQuery>,
     user: AuthenticatedUser,
 ) -> HttpResponse {
     let user_id = path.into_inner();
     if user.user_id != user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let grpc_req = proto::trading::GetTradeHistoryRequest {
         user_id: user_id.to_string(),
+        page: query.page,
+        limit: query.limit,
     };
     match client.get_trade_history(grpc_req).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner().trades),
@@ -162,7 +189,10 @@ pub async fn adjust_position_margin(
     if user.user_id != req.user_id.to_string() {
         return HttpResponse::Forbidden().body("Access denied");
     }
-    let idx = state.trading_pool_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % state.trading_clients.len();
+    let idx = state
+        .trading_pool_index
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % state.trading_clients.len();
     let mut client = state.trading_clients[idx].clone();
     let grpc_req = proto::trading::AdjustPositionMarginRequest {
         user_id: req.user_id.to_string(),
