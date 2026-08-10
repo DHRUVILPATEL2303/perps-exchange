@@ -82,7 +82,7 @@ flowchart TD
         TSDB[(TimescaleDB)]
     end
 
-    subgraph BlockchainLayer [Blockchain Layer (Solana)]
+    subgraph BlockchainLayer ["Blockchain Layer (Solana)"]
         direction LR
         Solana((Solana Devnet))
         BL[Blockchain Listener]
@@ -355,7 +355,7 @@ sequenceDiagram
     participant MS as Market Cache
     participant RE as Risk Engine
     participant AS as Account Service
-    participant K as Kafka [order-events]
+    participant K as "Kafka [order-events]"
 
     C->>GW: POST /api/trading/order
     Note over GW: Validates JWT → extracts user_id<br/>Round-robin pick 1 of 16 gRPC connections
@@ -587,9 +587,9 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant OA as Oracle Aggregator
-    participant K_PF as Kafka [price-feed]
+    participant K_PF as "Kafka [price-feed]"
     participant RE as Risk Engine
-    participant K_LIQ as Kafka [liquidations]
+    participant K_LIQ as "Kafka [liquidations]"
     participant TS as Trading Service
 
     loop Every 500ms
