@@ -57,6 +57,9 @@ message PositionInfo {
     string leverage = 5;
     string margin_mode = 6;
     string unrealized_pnl = 7;
+    string margin = 8;
+    string liquidation_price = 9;
+    string realized_pnl = 10;
 }
 
 message GetOpenOrdersRequest {

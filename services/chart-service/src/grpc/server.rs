@@ -1,5 +1,6 @@
 use proto::chart::{
-    CandleInfo, GetCandlesRequest, GetCandlesResponse, GetTickerRequest, GetTickerResponse,
+    CandleInfo, GetCandlesRequest, GetCandlesResponse, GetRecentTradesRequest,
+    GetRecentTradesResponse, GetTickerRequest, GetTickerResponse, TradeInfo,
     chart_service_server::ChartService as GrpcChartService,
 };
 use sqlx::{PgPool, Row};
@@ -169,5 +170,61 @@ impl GrpcChartService for ChartGrpcService {
         }
 
         Ok(Response::new(GetCandlesResponse { candles }))
+    }
+
+    async fn get_recent_trades(
+        &self,
+        request: Request<GetRecentTradesRequest>,
+    ) -> Result<Response<GetRecentTradesResponse>, Status> {
+        let req = request.into_inner();
+        let limit = if req.limit <= 0 {
+            50
+        } else {
+            req.limit.min(100)
+        };
+
+        let rows = sqlx::query(
+            r#"
+            SELECT time, symbol, price, quantity, taker_side
+            FROM trades
+            WHERE symbol = $1
+            ORDER BY time DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(&req.symbol)
+        .bind(limit as i64)
+        .fetch_all(&self.db_pool)
+        .await
+        .map_err(|e| Status::internal(format!("Database query error: {:?}", e)))?;
+
+        let mut trades = Vec::new();
+        for row in rows {
+            let time: chrono::DateTime<chrono::Utc> = row
+                .try_get("time")
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let symbol: String = row
+                .try_get("symbol")
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let price: rust_decimal::Decimal = row
+                .try_get("price")
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let quantity: rust_decimal::Decimal = row
+                .try_get("quantity")
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let taker_side: String = row
+                .try_get("taker_side")
+                .map_err(|e| Status::internal(e.to_string()))?;
+
+            trades.push(TradeInfo {
+                timestamp: time.timestamp(),
+                symbol,
+                price: price.to_string(),
+                quantity: quantity.to_string(),
+                taker_side,
+            });
+        }
+
+        Ok(Response::new(GetRecentTradesResponse { trades }))
     }
 }

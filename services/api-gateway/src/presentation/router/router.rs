@@ -1,7 +1,7 @@
 use crate::presentation::handlers::{
     account_handler::{
         deposit_funds, get_balance, get_deposit_address, get_transaction_history, withdraw_funds,
-    }, auth_handler::{get_challenge, get_telegram_token, login}, market_handler::{create_market, get_candles, get_ticker, list_markets}, trading_handler::{
+    }, auth_handler::{get_challenge, get_telegram_token, login}, market_handler::{create_market, get_candles, get_ticker, list_markets, get_recent_trades}, trading_handler::{
         adjust_position_margin, cancel_order, get_open_orders, get_positions, get_trade_history,
         place_order,
     }, ws_handler::ws_index,
@@ -17,6 +17,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/auth/telegram-token", web::post().to(get_telegram_token))
             .route("/markets", web::get().to(list_markets))
             .route("/markets/{symbol}/ticker", web::get().to(get_ticker))
+            .route("/markets/{symbol}/trades", web::get().to(get_recent_trades))
             .route("/markets", web::post().to(create_market))
             .route("/markets/{symbol}/candles", web::get().to(get_candles))
             .route("/accounts/{user_id}/balance", web::get().to(get_balance))

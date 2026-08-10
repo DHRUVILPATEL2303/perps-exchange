@@ -1,8 +1,8 @@
 use crate::state::AppState;
 use actix_web::HttpResponse;
 use actix_web::web::{Data, Path, Query};
-use proto::chart::{GetCandlesRequest as GrpcGetCandlesRequest, GetTickerRequest};
-use proto::market::{ListMarketsRequest, CreateMarketRequest};
+use proto::chart::{GetCandlesRequest as GrpcGetCandlesRequest, GetTickerRequest, GetRecentTradesRequest};
+use proto::market::{CreateMarketRequest, ListMarketsRequest};
 use redis::AsyncCommands;
 use serde::Deserialize;
 
@@ -144,14 +144,30 @@ pub async fn get_candles(
     }
 }
 
-pub async fn get_ticker(
-    state: Data<AppState>,
-    path: Path<String>,
-) -> HttpResponse {
+pub async fn get_ticker(state: Data<AppState>, path: Path<String>) -> HttpResponse {
     let symbol = path.into_inner();
     let mut client = state.chart_client.clone();
     match client.get_ticker(GetTickerRequest { symbol }).await {
         Ok(res) => HttpResponse::Ok().json(res.into_inner()),
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct TradesQuery {
+    pub limit: Option<i32>,
+}
+
+pub async fn get_recent_trades(
+    state: Data<AppState>,
+    path: Path<String>,
+    query: Query<TradesQuery>,
+) -> HttpResponse {
+    let symbol = path.into_inner();
+    let limit = query.limit.unwrap_or(50);
+    let mut client = state.chart_client.clone();
+    match client.get_recent_trades(GetRecentTradesRequest { symbol, limit }).await {
+        Ok(res) => HttpResponse::Ok().json(res.into_inner().trades),
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }

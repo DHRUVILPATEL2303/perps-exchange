@@ -5,6 +5,7 @@ package chart;
 service ChartService {
     rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
     rpc GetTicker(GetTickerRequest) returns (GetTickerResponse);
+    rpc GetRecentTrades(GetRecentTradesRequest) returns (GetRecentTradesResponse);
 }
 
 message GetCandlesRequest {
@@ -40,4 +41,21 @@ message GetTickerResponse {
     string volume_24h = 7;
     string open_24h = 8;
     int64  trade_count_24h = 9;
+}
+
+message GetRecentTradesRequest {
+    string symbol = 1;
+    int32 limit = 2;
+}
+
+message TradeInfo {
+    int64 timestamp = 1;
+    string symbol = 2;
+    string price = 3;
+    string quantity = 4;
+    string taker_side = 5;
+}
+
+message GetRecentTradesResponse {
+    repeated TradeInfo trades = 1;
 }
