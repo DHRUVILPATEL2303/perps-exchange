@@ -155,7 +155,6 @@ async fn main() {
         .dispatch()
         .await;
 }
-
 async fn handle_command(
     bot: Bot,
     msg: Message,
@@ -393,7 +392,7 @@ async fn handle_command(
                     .unwrap_or_else(|_| s.to_string())
             }
 
-            let mut response_text = String::from("💰 *Your Exchange Balances*\n\n");
+            let mut response_text = String::from("💰 <b>Your Exchange Balances</b>\n\n");
 
             match usdc_res {
                 Ok(r) => {
@@ -404,13 +403,13 @@ async fn handle_command(
                         .unwrap_or_default()
                         + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
                     response_text.push_str(&format!(
-                        "*USDC*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
+                        "<b>USDC</b>\n<pre>Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}</pre>\n",
                         format!("{:.4}", total),
                         avail,
                         locked
                     ));
                 }
-                Err(_) => response_text.push_str("*USDC*: \u{274c} Unavailable\n\n"),
+                Err(_) => response_text.push_str("<b>USDC</b>: ❌ Unavailable\n\n"),
             }
 
             match usdt_res {
@@ -422,17 +421,17 @@ async fn handle_command(
                         .unwrap_or_default()
                         + rust_decimal::Decimal::from_str(&res.locked_balance).unwrap_or_default();
                     response_text.push_str(&format!(
-                        "*USDT*\n`Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}`\n\n",
+                        "<b>USDT</b>\n<pre>Total:     {:>12}\nAvailable: {:>12}\nLocked:    {:>12}</pre>\n",
                         format!("{:.4}", total),
                         avail,
                         locked
                     ));
                 }
-                Err(_) => response_text.push_str("*USDT*: \u{274c} Unavailable\n\n"),
+                Err(_) => response_text.push_str("<b>USDT</b>: ❌ Unavailable\n\n"),
             }
 
             bot.send_message(msg.chat.id, response_text)
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                .parse_mode(teloxide::types::ParseMode::Html)
                 .await?;
         }
         Command::Positions => {
@@ -491,7 +490,7 @@ async fn handle_command(
                         bot.send_message(msg.chat.id, "📊 **No Active Perp Positions**")
                             .await?;
                     } else {
-                        let mut response_text = "📊 *Active Positions*\n".to_string();
+                        let mut response_text = "📊 <b>Active Positions</b>\n".to_string();
                         response_text.push_str("──────────────────────\n");
 
                         fn fmt_amt(s: &str) -> String {
@@ -511,7 +510,7 @@ async fn handle_command(
                             };
 
                             response_text.push_str(&format!(
-                                "{} *{}* ({} {}x)\n`Size:      {:>12}\nEntry:     {:>12}\nLiq Price: {:>12}\nMargin:    {:>12}\nUPnL:      {}{:>12}`\n──────────────────────\n",
+                                "{} <b>{}</b> ({} {}x)\n<pre>Size:      {:>12}\nEntry:     {:>12}\nLiq Price: {:>12}\nMargin:    {:>12}\nUPnL:      {}{:>12}</pre>──────────────────────\n",
                                 side_emoji,
                                 pos.symbol,
                                 pos.side,
@@ -525,7 +524,7 @@ async fn handle_command(
                             ));
                         }
                         bot.send_message(msg.chat.id, response_text)
-                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .parse_mode(teloxide::types::ParseMode::Html)
                             .await?;
                     }
                 }
@@ -727,6 +726,184 @@ async fn handle_command(
                 }
                 Err(_) => {
                     bot.send_message(msg.chat.id, "❌ Failed to retrieve transaction history.")
+                        .await?;
+                }
+            }
+        }
+        Command::Orders => {
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let trading_service_url = std::env::var("TRADING_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50052".to_string());
+
+            let mut client =
+                match proto::trading::trading_service_client::TradingServiceClient::connect(
+                    trading_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Trading Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+
+            let res = client
+                .get_open_orders(proto::trading::GetOpenOrdersRequest {
+                    user_id: user_id.clone(),
+                    page: None,
+                    limit: None,
+                })
+                .await;
+
+            match res {
+                Ok(r) => {
+                    let orders = r.into_inner().orders;
+                    if orders.is_empty() {
+                        bot.send_message(msg.chat.id, "📋 **No Active Open Orders**")
+                            .await?;
+                    } else {
+                        let mut response_text = "📋 <b>Active Open Orders</b>\n".to_string();
+                        response_text.push_str("──────────────────────\n");
+
+                        fn fmt_amt(s: &str) -> String {
+                            rust_decimal::Decimal::from_str(s)
+                                .map(|d| format!("{:.4}", d))
+                                .unwrap_or_else(|_| s.to_string())
+                        }
+
+                        for order in orders {
+                            let side_emoji = if order.side == "BUY" { "🟢" } else { "🔴" };
+                            
+                            response_text.push_str(&format!(
+                                "{} <b>{}</b> ({} {})\n<pre>Qty:       {:>12}\nPrice:     {:>12}\nID:        {}</pre>To cancel: <code>/cancel {} {}</code>\n──────────────────────\n",
+                                side_emoji,
+                                order.symbol,
+                                order.side,
+                                order.order_type,
+                                fmt_amt(&order.quantity),
+                                fmt_amt(&order.price),
+                                order.order_id,
+                                order.order_id,
+                                order.symbol,
+                            ));
+                        }
+                        bot.send_message(msg.chat.id, response_text)
+                            .parse_mode(teloxide::types::ParseMode::Html)
+                            .await?;
+                    }
+                }
+                Err(_) => {
+                    bot.send_message(msg.chat.id, "❌ Failed to retrieve open orders.")
+                        .await?;
+                }
+            }
+        }
+        Command::Cancel(args) => {
+            let user_id_opt = match sqlx::query(
+                "SELECT user_id FROM telegram_user_mappings WHERE telegram_chat_id = $1",
+            )
+            .bind(msg.chat.id.0)
+            .fetch_optional(&db)
+            .await
+            {
+                Ok(Some(row)) => {
+                    let uid: Uuid = row.get(0);
+                    Some(uid.to_string())
+                }
+                _ => None,
+            };
+
+            let user_id = match user_id_opt {
+                Some(uid) => uid,
+                None => {
+                    bot.send_message(msg.chat.id, "❌ Your Telegram account is not linked to any exchange account. Use /link to see instructions on how to link your wallet.").await?;
+                    return Ok(());
+                }
+            };
+
+            let parts: Vec<&str> = args.split_whitespace().collect();
+            if parts.len() != 2 {
+                bot.send_message(
+                    msg.chat.id,
+                    "❌ Invalid format! Use: <code>/cancel &lt;order_id&gt; &lt;symbol&gt;</code>\nExample: <code>/cancel 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d BTCUSDT</code>",
+                )
+                .parse_mode(teloxide::types::ParseMode::Html)
+                .await?;
+                return Ok(());
+            }
+
+            let order_id = parts[0];
+            let symbol = parts[1];
+
+            let trading_service_url = std::env::var("TRADING_SERVICE_URL")
+                .unwrap_or_else(|_| "http://localhost:50052".to_string());
+
+            let mut client =
+                match proto::trading::trading_service_client::TradingServiceClient::connect(
+                    trading_service_url,
+                )
+                .await
+                {
+                    Ok(c) => c,
+                    Err(_) => {
+                        bot.send_message(
+                            msg.chat.id,
+                            "❌ Failed to connect to Trading Service. Please try again later.",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                };
+
+            let res = client
+                .cancel_order(proto::trading::CancelOrderRequest {
+                    user_id: user_id.clone(),
+                    order_id: order_id.to_string(),
+                    symbol: symbol.to_string(),
+                })
+                .await;
+
+            match res {
+                Ok(r) => {
+                    let response = r.into_inner();
+                    if response.success {
+                        bot.send_message(msg.chat.id, format!("✅ Order <code>{}</code> cancelled successfully.", order_id))
+                            .parse_mode(teloxide::types::ParseMode::Html)
+                            .await?;
+                    } else {
+                        let err = response.error_message.unwrap_or_else(|| "Unknown error".to_string());
+                        bot.send_message(msg.chat.id, format!("❌ Failed to cancel order: {}", err))
+                            .await?;
+                    }
+                }
+                Err(e) => {
+                    bot.send_message(msg.chat.id, format!("❌ Failed to cancel order: {:?}", e.message()))
                         .await?;
                 }
             }
