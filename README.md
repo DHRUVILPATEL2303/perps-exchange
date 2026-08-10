@@ -47,80 +47,83 @@
 
 ## Architecture Diagram
 
-```mermaid
-flowchart TD
-    Client[Client Browser / Mobile / TUI]
+```text
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT LAYER                                          │
+│  Web Browser / Telegram Mini App / Tauri Desktop / TUI Client                     │
+│  REST HTTP/1.1  ·  WebSocket ws://  ·  WebTransport HTTP/3 QUIC UDP:4433          │
+└────────────────────────────────────┬───────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                  API GATEWAY  :8080 (REST+WS)  :4433/UDP (WebTransport)           │
+│  Actix-Web 4 HTTP  ·  actix-ws WebSocket  ·  wtransport (QUIC, self-signed TLS)  │
+│  Ed25519 challenge-response → JWT (24h)                                           │
+│  16-connection gRPC pool → Trading Service (AtomicUsize round-robin)              │
+│  Kafka consumer: execution-reports → fan-out to WS sessions                      │
+│  Redis Pub/Sub subscriber: trades:*, orderbook:*, private:*                      │
+└───┬──────────────┬─────────────────────┬─────────────────────────────────────────-┘
+    │gRPC          │gRPC                 │gRPC                    │gRPC
+    ▼              ▼                     ▼                        ▼
+┌──────────┐ ┌────────────────────┐ ┌───────────────┐ ┌────────────────────────┐
+│ MARKET   │ │  TRADING SERVICE   │ │ ACCOUNT       │ │  CHART SERVICE         │
+│ SERVICE  │ │  :50052 gRPC       │ │ SERVICE       │ │  :50058 gRPC           │
+│ :50051   │ │  :8082 metrics     │ │ :50053 gRPC   │ │  TimescaleDB           │
+│ Markets  │ │  Orders/Positions  │ │ Balances      │ │  Kafka: exec-reports   │
+│ Config   │ │  Trades/PnL        │ │ Transactions  │ │  OHLCV candles         │
+└──────────┘ └─────────┬──────────┘ └───────────────┘ └────────────────────────┘
+                       │ Kafka: order-events (Bincode)
+                       ▼
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                   APACHE KAFKA  (KRaft mode, no ZooKeeper)                        │
+│  order-events · execution-reports · price-feed · orderbook-depth                 │
+│  solana-deposits · withdrawal-requests · liquidations · user-notifications        │
+└────────────┬────────────────────────────┬─────────────────────────────────────────┘
+             │                            │
+  ┌──────────▼──────────┐    ┌────────────▼────────────────────────────┐
+  │  MATCHING ENGINE    │    │  RISK ENGINE SERVICE  :50057 gRPC       │
+  │  Per-symbol Tokio   │    │  RiskConsumer ← price-feed              │
+  │  worker tasks       │    │    checks every position each tick      │
+  │                     │    │    MMR=0.5% → publish [liquidations]   │
+  │  BTreeMap orderbook │    │  TradeConsumer: mirrors positions       │
+  │  O(log N) match     │    │  LiquidationConsumer: cleanup           │
+  │  O(log N) cancel    │    │  Funding loop: hourly settlement        │
+  │  O(1) cancel-lookup │    └─────────────────────────────────────────┘
+  └──────────┬──────────┘
+             │
+             ├── Kafka [execution-reports] ──▶ Trading Service (positions/orders/fees)
+             ├── Kafka [execution-reports] ──▶ API Gateway (WS push + user-notifications)
+             ├── Kafka [execution-reports] ──▶ Chart Service (OHLCV aggregation)
+             ├── Kafka [execution-reports] ──▶ Risk Engine (position mirror)
+             └── Redis Pub/Sub
+                   trades:<symbol>      ─ L2 depth + fills every 100ms
+                   orderbook:<symbol>
+                   private:<user_id>
 
-    subgraph ObservabilityLayer [Observability Layer]
-        direction TB
-        Grafana[Grafana Dashboards]
-        Prometheus[Prometheus]
-        Jaeger[Jaeger Tracing]
-        
-        Grafana -->|Query| Prometheus
-    end
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                     BLOCKCHAIN LAYER (Solana Devnet)                              │
+│                                                                                   │
+│  BLOCKCHAIN-LISTENER                     WITHDRAWAL-SIGNER                        │
+│  Polls RPC every 3s for ATA deltas       Kafka: withdrawal-requests               │
+│  (chunks of 100, SPL data[64..72])       Build SPL Transfer ix                    │
+│  → Kafka: solana-deposits                Sign with admin keypair                  │
+│  → On-chain sweep ix (opcode 0x01)       send_and_confirm on Solana               │
+│    funds move to treasury ATA            UPDATE DB: SUCCESS / FAILED+revert       │
+└────────────────────────────────────────────────────────────────────────────────────┘
 
-    subgraph MicroservicesLayer [Microservices Layer]
-        direction TB
-        API[API Gateway]
-        TS[Trading Service]
-        AS[Account Service]
-        RE[Risk Engine]
-        ME{Matching Engine}
-        
-        API -->|gRPC| TS
-        API -->|gRPC| AS
-        TS <-->|gRPC| RE
-        TS <-->|gRPC| AS
-    end
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│                       SUPPORTING SERVICES                                         │
+│  ORACLE AGGREGATOR         BINANCE-LIQUIDATION       TELEGRAM-BOT                 │
+│  Binance WS + Coinbase WS  Binance futures liq       Notifications + trading      │
+│  → avg index price 500ms   → Kafka: binance-liq      gRPC: Trading + Account      │
+│  → Kafka: price-feed                                 Kafka: user-notifications    │
+│  → Redis: price-ticks                                                             │
+└────────────────────────────────────────────────────────────────────────────────────┘
 
-    subgraph DataLayer [Data & Messaging Layer]
-        direction LR
-        PG[(PostgreSQL)]
-        Kafka[(Apache Kafka)]
-        Redis[(Redis)]
-        TSDB[(TimescaleDB)]
-    end
-
-    subgraph BlockchainLayer ["Blockchain Layer (Solana)"]
-        direction LR
-        Solana((Solana Devnet))
-        BL[Blockchain Listener]
-        WSig[Withdrawal Signer]
-    end
-
-    %% Client to Microservices
-    Client -->|HTTP / WS / QUIC| API
-
-    %% Messaging
-    TS -->|Produce order-events| Kafka
-    Kafka -->|Consume| ME
-    ME -->|Produce exec-reports| Kafka
-    Kafka -->|Consume| API
-    Kafka -->|Consume| TS
-    Kafka -->|Consume| RE
-    
-    ME -->|Publish| Redis
-    Redis -->|Subscribe| API
-    
-    %% DB
-    TS -->|SQL| PG
-    AS -->|SQL| PG
-    
-    %% Blockchain
-    Solana -->|Poll ATA| BL
-    BL -->|Produce solana-deposits| Kafka
-    AS -->|Produce withdrawal-requests| Kafka
-    Kafka -->|Consume| WSig
-    WSig -->|Sign Tx| Solana
-    Kafka -->|Consume solana-deposits| AS
-
-    %% Observability Links
-    Prometheus -.->|Scrape| API
-    Prometheus -.->|Scrape| TS
-    API -.->|Metrics / Traces| Jaeger
-    TS -.->|Metrics / Traces| Jaeger
-    ME -.->|Metrics / Traces| Jaeger
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│  OBSERVABILITY: Prometheus → Grafana  ·  Jaeger (OTLP)  ·  cAdvisor             │
+│  INFRA: PostgreSQL 17 + PgBouncer (500 conns)  ·  Redis  ·  TimescaleDB         │
+└────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
