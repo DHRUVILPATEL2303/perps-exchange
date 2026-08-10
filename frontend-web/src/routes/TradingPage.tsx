@@ -5,16 +5,7 @@ import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { createTransport } from '../services/transport';
-import {
-  TrendingUp,
-  TrendingDown,
-  ArrowLeft,
-  Sun,
-  Moon,
-  RefreshCw,
-  X,
-  AlertCircle
-} from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowLeft, Sun, Moon, RefreshCw, X, CircleAlert as AlertCircle } from 'lucide-react';
 
 interface Market {
   id: string;
@@ -621,10 +612,10 @@ export const TradingPage: React.FC = () => {
   const spreadPercentage = bids.length > 0 && spread > 0 ? (spread / bids[0].price) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-background text-text transition-colors duration-200">
+    <div className="terminal-page min-h-screen text-text transition-colors duration-200">
       
       {/* Top Ticker Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 h-14 border-b border-border bg-background/80 backdrop-blur-md">
+      <nav className="terminal-bar fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b px-4 backdrop-blur-xl md:px-6">
         <div className="flex items-center space-x-6">
           <button
             onClick={() => navigate('/dashboard')}
@@ -686,47 +677,42 @@ export const TradingPage: React.FC = () => {
       </nav>
 
       {/* Main Grid */}
-      <div className="pt-14 grid grid-cols-1 xl:grid-cols-4 min-h-[calc(100vh-56px)] select-none">
+      <div className="terminal-layout grid min-h-[calc(100vh-56px)] select-none grid-cols-[minmax(0,1fr)_300px_330px] gap-px bg-[#272c34] pt-14">
         
         {/* Left Widget: Orderbook */}
-        <section className="xl:col-span-1 border-r border-border bg-card/15 flex flex-col p-4 space-y-4">
+        <section className="terminal-book flex min-h-0 flex-col space-y-4 bg-[#14171c] p-4 xl:col-span-1 xl:col-start-2 xl:row-start-1">
           <div className="flex items-center justify-between border-b border-border/40 pb-2">
             <span className="text-xs font-bold text-text-secondary uppercase">Order Book</span>
             <span className="text-[10px] font-mono text-text-secondary">Spread: ${spread.toFixed(2)} ({spreadPercentage.toFixed(2)}%)</span>
           </div>
 
-          <div className="flex-1 flex flex-col justify-between font-mono text-[11px] leading-tight">
+          <div className="flex-1 flex flex-col justify-between font-mono text-[11px] leading-tight"><div className="grid grid-cols-3 gap-2 px-2 text-[9px] font-sans font-bold uppercase tracking-wider text-text-secondary"><span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span></div>
             {/* Asks (Sell Orders) - Red */}
             <div className="flex flex-col-reverse justify-end space-y-0.5 h-[160px] overflow-hidden">
               {asks.map((ask, idx) => (
-                <div key={idx} className="flex justify-between hover:bg-danger/5 px-2 py-0.5 rounded relative">
-                  <div
-                    className="absolute right-0 top-0 bottom-0 bg-danger/5 transition-all pointer-events-none"
-                    style={{ width: `${(ask.total / (asks[asks.length - 1]?.total || 1)) * 100}%` }}
-                  />
-                  <span className="text-danger font-semibold z-10">${ask.price.toFixed(1)}</span>
-                  <span className="text-text font-medium z-10">{ask.size.toFixed(3)}</span>
+                <div key={idx} className="order-row ask grid grid-cols-3 gap-2 px-2 py-1 font-mono text-[11px]" style={{ '--depth': `${(ask.total / (asks[asks.length - 1]?.total || 1)) * 100}%` } as React.CSSProperties}>
+                  <span className="text-danger font-semibold">${ask.price.toFixed(1)}</span>
+                  <span className="text-right text-text font-medium">{ask.size.toFixed(3)}</span>
+                  <span className="text-right text-text-secondary">{ask.total.toFixed(3)}</span>
                 </div>
               ))}
             </div>
 
             {/* Mid Spread pricing */}
-            <div className="py-2 border-t border-b border-border/40 text-center font-bold text-sm my-2 bg-border/5">
-              <span className={ticker24hChange >= 0 ? 'text-success' : 'text-danger'}>
+            <div className="py-2 border-t border-b border-[#272c34] text-center font-bold text-sm my-1 bg-[#101318]">
+              <span className={ticker24hChange >= 0 ? 'text-[#19c89d]' : 'text-[#f05d68]'}>
                 ${lastPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}
               </span>
+              <span className="ml-2 text-[10px] font-sans font-normal text-[#8b95a3]">spread</span>
             </div>
 
             {/* Bids (Buy Orders) - Green */}
             <div className="flex flex-col space-y-0.5 h-[160px] overflow-hidden">
               {bids.map((bid, idx) => (
-                <div key={idx} className="flex justify-between hover:bg-success/5 px-2 py-0.5 rounded relative">
-                  <div
-                    className="absolute right-0 top-0 bottom-0 bg-success/5 transition-all pointer-events-none"
-                    style={{ width: `${(bid.total / (bids[bids.length - 1]?.total || 1)) * 100}%` }}
-                  />
-                  <span className="text-success font-semibold z-10">${bid.price.toFixed(1)}</span>
-                  <span className="text-text font-medium z-10">{bid.size.toFixed(3)}</span>
+                <div key={idx} className="order-row bid grid grid-cols-3 gap-2 px-2 py-1 font-mono text-[11px]" style={{ '--depth': `${(bid.total / (bids[bids.length - 1]?.total || 1)) * 100}%` } as React.CSSProperties}>
+                  <span className="text-success font-semibold">${bid.price.toFixed(1)}</span>
+                  <span className="text-right text-text font-medium">{bid.size.toFixed(3)}</span>
+                  <span className="text-right text-text-secondary">{bid.total.toFixed(3)}</span>
                 </div>
               ))}
             </div>
@@ -773,7 +759,7 @@ export const TradingPage: React.FC = () => {
         </section>
 
         {/* Center Grid: Chart and Positions Panel */}
-        <section className="xl:col-span-2 flex flex-col border-r border-border">
+        <section className="terminal-chart flex min-h-0 flex-col bg-[#0d0f12] xl:col-span-1 xl:col-start-1 xl:row-start-1">
           {/* Top Resolution Selection */}
           <div className="flex items-center justify-between px-6 py-2 border-b border-border bg-card/20">
             <div className="flex items-center space-x-1">
@@ -1021,7 +1007,7 @@ export const TradingPage: React.FC = () => {
         </section>
 
         {/* Right Widget: Order Placement & Inputs */}
-        <section className="xl:col-span-1 p-4 bg-card/25 flex flex-col space-y-6">
+        <section className="terminal-order flex min-h-0 flex-col space-y-6 bg-[#14171c] p-4 xl:col-span-1 xl:col-start-3 xl:row-start-1">
           <div className="space-y-1">
             <span className="text-[10px] font-bold text-text-secondary uppercase">Available Balance</span>
             <p className="text-xl font-bold font-mono text-text">${parseFloat(usdcBalance).toLocaleString()}</p>
@@ -1030,11 +1016,11 @@ export const TradingPage: React.FC = () => {
           <form onSubmit={handlePlaceOrder} className="space-y-4 flex-1">
             
             {/* Side Tabs (Buy Long / Sell Short) */}
-            <div className="flex bg-background border border-border rounded-xl p-1 h-11">
+            <div className="flex h-11 rounded-lg border border-[#303640] bg-[#101318] p-1">
               <button
                 type="button"
                 onClick={() => setSide('BUY')}
-                className={`flex-1 rounded-lg text-xs font-bold transition-all ${side === 'BUY' ? 'bg-success text-white' : 'text-text-secondary'}`}
+                className={`flex-1 rounded-md text-xs font-bold transition-all ${side === 'BUY' ? 'bg-[#123c35] text-[#19c89d]' : 'text-[#8b95a3]'}`}
               >
                 Buy / Long
               </button>
