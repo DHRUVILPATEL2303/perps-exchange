@@ -273,11 +273,16 @@ services:
       - ACCOUNT_SERVICE_URL=http://account-service:50053
       - CHART_SERVICE_URL=http://chart-service:50058
       - DISABLE_LOGS=true
+      - KAFKA_BROKERS=kafka:29092
     depends_on:
       trading-service:
         condition: service_started
       chart-service:
         condition: service_started
+      kafka:
+        condition: service_started
+      init-kafka:
+        condition: service_completed_successfully
 
   chart-service:
     build:

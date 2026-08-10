@@ -60,6 +60,10 @@ enum Command {
     Trades,
     #[command(description = "view your account transaction history (deposits/withdrawals).")]
     History,
+    #[command(description = "view your active open orders.")]
+    Orders,
+    #[command(description = "cancel an open order: /cancel <order_id> <symbol>.")]
+    Cancel(String),
 }
 
 type AlertMap = Arc<Mutex<HashMap<String, Vec<Alert>>>>;
@@ -487,15 +491,42 @@ async fn handle_command(
                         bot.send_message(msg.chat.id, "📊 **No Active Perp Positions**")
                             .await?;
                     } else {
-                        let mut response_text =
-                            "📊 **Your Active Perp Positions**:\n\n".to_string();
+                        let mut response_text = "📊 *Active Positions*\n".to_string();
+                        response_text.push_str("──────────────────────\n");
+
+                        fn fmt_amt(s: &str) -> String {
+                            rust_decimal::Decimal::from_str(s)
+                                .map(|d| format!("{:.4}", d))
+                                .unwrap_or_else(|_| s.to_string())
+                        }
+
                         for pos in positions {
+                            let side_emoji = if pos.side == "LONG" { "🟢" } else { "🔴" };
+                            let pnl_val = rust_decimal::Decimal::from_str(&pos.unrealized_pnl)
+                                .unwrap_or_default();
+                            let pnl_sign = if pnl_val.is_sign_positive() && !pnl_val.is_zero() {
+                                "+"
+                            } else {
+                                ""
+                            };
+
                             response_text.push_str(&format!(
-                                "• **{}** ({})\n  Size: **{}**\n  Entry Price: **{}**\n  Leverage: **{}x** ({})\n  Unrealized PnL: **{}**\n\n",
-                                pos.symbol, pos.side, pos.size, pos.entry_price, pos.leverage, pos.margin_mode, pos.unrealized_pnl
+                                "{} *{}* ({} {}x)\n`Size:      {:>12}\nEntry:     {:>12}\nLiq Price: {:>12}\nMargin:    {:>12}\nUPnL:      {}{:>12}`\n──────────────────────\n",
+                                side_emoji,
+                                pos.symbol,
+                                pos.side,
+                                pos.leverage,
+                                fmt_amt(&pos.size),
+                                fmt_amt(&pos.entry_price),
+                                fmt_amt(&pos.liquidation_price),
+                                fmt_amt(&pos.margin),
+                                pnl_sign,
+                                fmt_amt(&pos.unrealized_pnl),
                             ));
                         }
-                        bot.send_message(msg.chat.id, response_text).await?;
+                        bot.send_message(msg.chat.id, response_text)
+                            .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+                            .await?;
                     }
                 }
                 Err(_) => {

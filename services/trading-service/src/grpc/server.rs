@@ -51,11 +51,24 @@ impl GrpcTradingService for TradingGrpcService {
         let market = match self.market_cache.get(&req.symbol).await {
             Some(m) => m,
             None => {
-                return Ok(Response::new(PlaceOrderResponse {
-                    order_id: "".to_string(),
-                    status: "REJECTED".to_string(),
-                    error_message: Some(format!("Market {} not found", req.symbol)),
-                }));
+                let market_url = std::env::var("MARKET_SERVICE_URL")
+                    .unwrap_or_else(|_| "http://localhost:50051".to_string());
+                if let Ok(mut market_client) = crate::infrastructure::grpc::market_client::MarketGrpcClient::connect(market_url).await {
+                    if let Ok(markets) = market_client.list_markets().await {
+                        self.market_cache.load(markets).await;
+                    }
+                }
+                match self.market_cache.get(&req.symbol).await {
+                    Some(m) => m,
+                    None => {
+                        tracing::error!("Market {} not found", req.symbol);
+                        return Ok(Response::new(PlaceOrderResponse {
+                            order_id: "".to_string(),
+                            status: "REJECTED".to_string(),
+                            error_message: Some(format!("Market {} not found", req.symbol)),
+                        }));
+                    }
+                }
             }
         };
 
@@ -423,6 +436,9 @@ impl GrpcTradingService for TradingGrpcService {
                 leverage: p.leverage.to_string(),
                 margin_mode: p.margin_mode,
                 unrealized_pnl: p.unrealized_pnl.to_string(),
+                margin: p.margin.to_string(),
+                liquidation_price: p.liquidation_price.to_string(),
+                realized_pnl: p.realized_pnl.to_string(),
             })
             .collect();
 
