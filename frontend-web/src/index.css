@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --card: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --primary: #7c3aed; /* purple */
+  --accent: #2563eb; /* blue */
+  --success: #10b981; /* green */
+  --danger: #ef4444; /* red */
+}
+
+.dark {
+  --background: #000000;
+  --card: #090909;
+  --border: #202020;
+  --text: #ffffff;
+  --text-secondary: #8e8e8e;
+  --primary: #9d4edd; /* purple */
+  --accent: #3a86ff; /* blue */
+  --success: #00c896; /* green */
+  --danger: #ff4a5a; /* red */
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background-color: var(--background);
+  color: var(--text);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Grid Layouts */
+.trading-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 340px;
+  grid-template-rows: 56px 1fr;
+  height: calc(100vh - 56px);
+}
