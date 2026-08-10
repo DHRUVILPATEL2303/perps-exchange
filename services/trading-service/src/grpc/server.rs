@@ -16,6 +16,7 @@ use proto::trading::{
     CancelOrderResponse, GetOpenOrdersRequest, GetOpenOrdersResponse, GetPositionsResponse,
     GetPostionsRequest, GetTradeHistoryRequest, GetTradeHistoryResponse, OrderInfo,
     PlaceOrderRequest, PlaceOrderResponse, PositionInfo, TradeInfo,
+    GetPnlHistoryRequest, GetPnlHistoryResponse, PnlHistoryInfo,
     trading_service_server::TradingService as GrpcTradingService,
 };
 use rust_decimal::Decimal;
@@ -528,6 +529,32 @@ impl GrpcTradingService for TradingGrpcService {
                 new_margin: pos.margin.to_string(),
                 new_liquidation_price: pos.liquidation_price.to_string(),
             })),
+            Err(e) => Err(Status::internal(e.to_string())),
+        }
+    }
+
+    async fn get_pnl_history(
+        &self,
+        request: Request<GetPnlHistoryRequest>,
+    ) -> Result<Response<GetPnlHistoryResponse>, Status> {
+        let req = request.into_inner();
+        let user_id = Uuid::parse_str(&req.user_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
+
+        match self.position_service.get_pnl_history(user_id, req.page, req.limit).await {
+            Ok(history) => {
+                let pb_history = history.into_iter().map(|item| PnlHistoryInfo {
+                    id: item.id.to_string(),
+                    user_id: item.user_id.to_string(),
+                    symbol: item.symbol,
+                    side: item.side,
+                    qty: item.qty.to_string(),
+                    entry_price: item.entry_price.to_string(),
+                    exit_price: item.exit_price.to_string(),
+                    realized_pnl: item.realized_pnl.to_string(),
+                    created_at: item.created_at.to_rfc3339(),
+                }).collect();
+                Ok(Response::new(GetPnlHistoryResponse { history: pb_history }))
+            }
             Err(e) => Err(Status::internal(e.to_string())),
         }
     }

@@ -111,11 +111,23 @@ impl GrpcChartService for ChartGrpcService {
 
         let view_name = match req.resolution.as_str() {
             "1m" => "candles_1m",
+            "3m" => "candles_3m",
             "5m" => "candles_5m",
+            "15m" => "candles_15m",
+            "30m" => "candles_30m",
             "1h" => "candles_1h",
+            "2h" => "candles_2h",
+            "4h" => "candles_4h",
+            "6h" => "candles_6h",
+            "8h" => "candles_8h",
+            "12h" => "candles_12h",
+            "1d" => "candles_1d",
+            "3d" => "candles_3d",
+            "1w" => "candles_1w",
+            "1M" => "candles_1M",
             _ => {
                 return Err(Status::invalid_argument(
-                    "Invalid resolution. Must be '1m', '5m', or '1h'.",
+                    "Invalid resolution. Must be a valid standard time interval (e.g. 15m, 4h, 1d).",
                 ));
             }
         };

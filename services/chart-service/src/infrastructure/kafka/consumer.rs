@@ -134,19 +134,28 @@ pub async fn run_trade_consumer(
                                 eprintln!("TimescaleDB save failed: {:?}", e);
                             }
 
-                            if let Err(e) = update_redis_candle(&mut redis_conn, &trade, 60, "1m").await
-                            {
-                                eprintln!("Redis 1m update failed: {:?}", e);
-                            }
-                            if let Err(e) =
-                                update_redis_candle(&mut redis_conn, &trade, 300, "5m").await
-                            {
-                                eprintln!("Redis 5m update failed: {:?}", e);
-                            }
-                            if let Err(e) =
-                                update_redis_candle(&mut redis_conn, &trade, 3600, "1h").await
-                            {
-                                eprintln!("Redis 1h update failed: {:?}", e);
+                            let resolutions = [
+                                (60, "1m"),
+                                (180, "3m"),
+                                (300, "5m"),
+                                (900, "15m"),
+                                (1800, "30m"),
+                                (3600, "1h"),
+                                (7200, "2h"),
+                                (14400, "4h"),
+                                (21600, "6h"),
+                                (28800, "8h"),
+                                (43200, "12h"),
+                                (86400, "1d"),
+                                (259200, "3d"),
+                                (604800, "1w"),
+                                (2592000, "1M"),
+                            ];
+
+                            for &(secs, label) in &resolutions {
+                                if let Err(e) = update_redis_candle(&mut redis_conn, &trade, secs, label).await {
+                                    eprintln!("Redis {} update failed: {:?}", label, e);
+                                }
                             }
                         }
                         Err(e) => {

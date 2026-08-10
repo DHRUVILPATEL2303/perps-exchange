@@ -9,6 +9,7 @@ service TradingService {
     rpc GetOpenOrders(GetOpenOrdersRequest) returns (GetOpenOrdersResponse);
     rpc GetTradeHistory(GetTradeHistoryRequest) returns (GetTradeHistoryResponse);
     rpc AdjustPositionMargin(AdjustPositionMarginRequest) returns (AdjustPositionMarginResponse);
+    rpc GetPnlHistory(GetPnlHistoryRequest) returns (GetPnlHistoryResponse);
 }
 
 message PlaceOrderRequest {
@@ -110,4 +111,26 @@ message AdjustPositionMarginResponse {
     bool success = 1;
     string new_margin = 2;
     string new_liquidation_price = 3;
+}
+
+message GetPnlHistoryRequest {
+    string user_id = 1;
+    optional int32 page = 2;
+    optional int32 limit = 3;
+}
+
+message GetPnlHistoryResponse {
+    repeated PnlHistoryInfo history = 1;
+}
+
+message PnlHistoryInfo {
+    string id = 1;
+    string user_id = 2;
+    string symbol = 3;
+    string side = 4;
+    string qty = 5;
+    string entry_price = 6;
+    string exit_price = 7;
+    string realized_pnl = 8;
+    string created_at = 9;
 }

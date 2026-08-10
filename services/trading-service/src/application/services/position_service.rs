@@ -8,7 +8,11 @@ use uuid::Uuid;
 use crate::{
     domain::{
         entities::position::Position,
-        repositories::{position_repository::PositionRepository, order_repository::OrderRepository},
+        repositories::{
+            position_repository::PositionRepository,
+            order_repository::OrderRepository,
+            pnl_history_repository::PnlHistoryRepository,
+        },
     },
     application::usecase::position_usecase::PositionUseCase,
     infrastructure::grpc::account_client::AccountGrpcClient,
@@ -18,6 +22,7 @@ pub struct PositionService {
     repository: Arc<dyn PositionRepository>,
     account_client: AccountGrpcClient,
     order_repository: Arc<dyn OrderRepository>,
+    pnl_history_repository: Arc<dyn PnlHistoryRepository>,
 }
 
 impl PositionService {
@@ -25,11 +30,13 @@ impl PositionService {
         repository: Arc<dyn PositionRepository>,
         account_client: AccountGrpcClient,
         order_repository: Arc<dyn OrderRepository>,
+        pnl_history_repository: Arc<dyn PnlHistoryRepository>,
     ) -> Self {
         Self {
             repository,
             account_client,
             order_repository,
+            pnl_history_repository,
         }
     }
 
@@ -97,6 +104,21 @@ impl PositionUseCase for PositionService {
 
                 let released_margin = (trade_qty / existing.size) * existing.margin;
 
+                let pnl_entry = crate::domain::entities::pnl_history::PnlHistory {
+                    id: Uuid::new_v4(),
+                    user_id,
+                    symbol: existing.symbol.clone(),
+                    side: existing.side.clone(),
+                    qty: trade_qty,
+                    entry_price: existing.entry_price,
+                    exit_price: trade_price,
+                    realized_pnl: pnl,
+                    created_at: Utc::now(),
+                };
+                if let Err(e) = self.pnl_history_repository.create(pnl_entry).await {
+                    tracing::error!("Failed to record realized PnL history: {:?}", e);
+                }
+
                 existing.size -= trade_qty;
                 existing.margin -= released_margin;
                 existing.realized_pnl += pnl;
@@ -136,6 +158,21 @@ impl PositionUseCase for PositionService {
 
                 let remaining_qty = trade_qty - existing.size;
                 let released_margin = existing.margin;
+
+                let pnl_entry = crate::domain::entities::pnl_history::PnlHistory {
+                    id: Uuid::new_v4(),
+                    user_id,
+                    symbol: existing.symbol.clone(),
+                    side: existing.side.clone(),
+                    qty: existing.size,
+                    entry_price: existing.entry_price,
+                    exit_price: trade_price,
+                    realized_pnl: pnl,
+                    created_at: Utc::now(),
+                };
+                if let Err(e) = self.pnl_history_repository.create(pnl_entry).await {
+                    tracing::error!("Failed to record realized PnL history: {:?}", e);
+                }
 
                 existing.size = Decimal::ZERO;
                 existing.margin = Decimal::ZERO;
@@ -316,5 +353,15 @@ impl PositionUseCase for PositionService {
 
         let updated = self.repository.update(position).await?;
         Ok(updated)
+    }
+
+    async fn get_pnl_history(
+        &self,
+        user_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<Vec<crate::domain::entities::pnl_history::PnlHistory>, ServiceError> {
+        let history = self.pnl_history_repository.list_by_user(user_id, page, limit).await?;
+        Ok(history)
     }
 }

@@ -27,4 +27,11 @@ pub trait PositionUseCase: Send + Sync {
         amount: Decimal,
         is_add: bool,
     ) -> Result<Position, ServiceError>;
+
+    async fn get_pnl_history(
+        &self,
+        user_id: Uuid,
+        page: Option<i32>,
+        limit: Option<i32>,
+    ) -> Result<Vec<crate::domain::entities::pnl_history::PnlHistory>, ServiceError>;
 }

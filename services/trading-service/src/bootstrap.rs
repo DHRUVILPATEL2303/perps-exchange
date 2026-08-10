@@ -16,6 +16,7 @@ use crate::{
             postgres_order_repository::PostgresOrderRepository,
             postgres_position_repository::PostgresPositionRepository,
             postgres_trade_repository::PostgresTradeRepository,
+            postgres_pnl_history_repository::PostgresPnlHistoryRepository,
         },
     },
     state::AppState,
@@ -94,11 +95,13 @@ pub async fn bootstrap() -> Result<(
     let position_repository = Arc::new(PostgresPositionRepository::new(db.pool().clone()));
     let trade_repository = Arc::new(PostgresTradeRepository::new(db.pool().clone()));
     let order_repository = Arc::new(PostgresOrderRepository::new(db.pool().clone()));
+    let pnl_history_repository = Arc::new(PostgresPnlHistoryRepository::new(db.pool().clone()));
 
     let position_service = Arc::new(PositionService::new(
         position_repository.clone(),
         account_client.clone(),
         order_repository.clone(),
+        pnl_history_repository.clone(),
     ));
     let trading_service = Arc::new(TradingService::new(market_cache.clone()));
 

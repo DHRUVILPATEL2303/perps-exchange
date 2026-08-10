@@ -4,7 +4,7 @@ use crate::presentation::handlers::{
         get_funding_history,
     }, auth_handler::{get_challenge, get_telegram_token, login}, market_handler::{create_market, get_candles, get_ticker, list_markets, get_recent_trades}, trading_handler::{
         adjust_position_margin, cancel_order, get_open_orders, get_positions, get_trade_history,
-        place_order,
+        place_order, get_pnl_history,
     }, ws_handler::ws_index,
 };
 use crate::presentation::routes::health::health_routes;
@@ -47,6 +47,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route(
                 "/funding/history/{user_id}",
                 web::get().to(get_funding_history),
+            )
+            .route(
+                "/pnl/history/{user_id}",
+                web::get().to(get_pnl_history),
             ),
     );
 
