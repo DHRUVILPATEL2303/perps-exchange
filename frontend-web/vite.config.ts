@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@solana/wallet-adapter-wallets': path.resolve(__dirname, './src/shims/wallet-adapters.ts'),
     },
   },
   server: {
