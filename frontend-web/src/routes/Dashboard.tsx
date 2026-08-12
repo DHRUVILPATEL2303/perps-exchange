@@ -4,24 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
-import {
-  TrendingUp,
-  Search,
-  ArrowDownLeft,
-  ArrowUpRight,
-  User,
-  Bell,
-  Sun,
-  Moon,
-  LogOut,
-  RefreshCw,
-  Copy,
-  CheckCircle,
-  ExternalLink,
-  ChevronRight,
-  TrendingDown,
-  DollarSign
-} from 'lucide-react';
+import { TrendingUp, Search, ArrowDownLeft, ArrowUpRight, User, Bell, Sun, Moon, LogOut, RefreshCw, Copy, CircleCheck as CheckCircle, ExternalLink, ChevronRight, TrendingDown, DollarSign } from 'lucide-react';
 
 interface Market {
   id: string;
@@ -176,9 +159,9 @@ export const Dashboard: React.FC = () => {
   const totalBalance = parseFloat(balance.available_balance) + parseFloat(balance.locked_balance);
 
   return (
-    <div className="min-h-screen bg-background text-text transition-colors duration-200">
+    <div className="exchange-shell min-h-screen bg-background text-text transition-colors duration-200">
       {/* Header bar */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-6 h-14 border-b border-border bg-background/80 backdrop-blur-md">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-background/85 px-6 backdrop-blur-xl md:px-10">
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-2 cursor-pointer" onClick={() => navigate('/')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -239,10 +222,10 @@ export const Dashboard: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <main className="pt-20 pb-12 px-6 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="mx-auto grid max-w-[1440px] grid-cols-1 gap-5 px-4 pb-10 pt-24 md:px-8 lg:grid-cols-3">
         
         {/* Left Column: Markets list */}
-        <section className="lg:col-span-2 space-y-6">
+        <section className="space-y-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold tracking-tight">Perpetual Markets</h2>
@@ -282,7 +265,7 @@ export const Dashboard: React.FC = () => {
               <p className="text-xs text-text-secondary">Try searching for another contract symbol or check back later.</p>
             </div>
           ) : (
-            <div className="border border-border rounded-2xl bg-card overflow-hidden">
+            <div className="exchange-panel overflow-hidden rounded-xl bg-card">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -300,7 +283,7 @@ export const Dashboard: React.FC = () => {
                       <tr
                         key={market.id}
                         onClick={() => navigate(`/markets/${market.symbol}`)}
-                        className="border-b border-border/40 hover:bg-border/10 cursor-pointer h-16 transition-all duration-150"
+                        className="market-grid-row h-[72px] cursor-pointer border-b border-border/40 transition-all duration-150"
                       >
                         <td className="py-2 pl-4 font-mono font-bold text-sm text-primary flex items-center space-x-2 h-full">
                           <span>{market.symbol}</span>
@@ -323,8 +306,8 @@ export const Dashboard: React.FC = () => {
         </section>
 
         {/* Right Column: Account Balance Card & Overview */}
-        <section className="space-y-6">
-          <div className="p-6 rounded-2xl border border-border bg-card space-y-6 shadow-sm relative overflow-hidden">
+        <section className="space-y-5">
+          <div className="exchange-panel relative overflow-hidden rounded-xl bg-card p-6 shadow-sm">
             <div className="absolute top-0 right-0 translate-x-1/4 -translate-y-1/4 w-32 h-32 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
             
             <div className="space-y-2">
@@ -364,7 +347,7 @@ export const Dashboard: React.FC = () => {
           </div>
 
           {/* Wallet Info Widget */}
-          <div className="p-6 rounded-2xl border border-border bg-card space-y-4">
+          <div className="exchange-panel rounded-xl bg-card p-6">
             <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">Solana Connected Wallet</h4>
             <div className="flex items-center justify-between border border-border/50 bg-background/50 rounded-xl px-4 py-3">
               <div className="flex flex-col space-y-0.5">

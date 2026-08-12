@@ -15,6 +15,53 @@ impl PostgresAccountRepository {
     pub fn new(pool: Pool<Postgres>) -> Self {
         Self { pool }
     }
+
+    async fn fetch_account_for_update(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+        asset: &str,
+    ) -> Result<Option<Account>, sqlx::Error> {
+        let account = sqlx::query_as::<_, Account>(
+            r#"
+            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
+            FROM accounts
+            WHERE user_id = $1 AND asset = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(user_id)
+        .bind(asset)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        if account.is_none() {
+            let alt_asset = if asset == "USDT" {
+                "USDC"
+            } else if asset == "USDC" {
+                "USDT"
+            } else {
+                return Ok(None);
+            };
+
+            let alt_account = sqlx::query_as::<_, Account>(
+                r#"
+                SELECT id, user_id, asset, balance, frozen, created_at, updated_at
+                FROM accounts
+                WHERE user_id = $1 AND asset = $2
+                FOR UPDATE
+                "#,
+            )
+            .bind(user_id)
+            .bind(alt_asset)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+            return Ok(alt_account);
+        }
+
+        Ok(account)
+    }
 }
 
 #[async_trait]
@@ -56,6 +103,30 @@ impl AccountRepository for PostgresAccountRepository {
         .bind(asset)
         .fetch_optional(&self.pool)
         .await?;
+
+        if account.is_none() {
+            let alt_asset = if asset == "USDT" {
+                "USDC"
+            } else if asset == "USDC" {
+                "USDT"
+            } else {
+                return Ok(None);
+            };
+
+            let alt_account = sqlx::query_as::<_, Account>(
+                r#"
+                SELECT id, user_id, asset, balance, frozen, created_at, updated_at
+                FROM accounts
+                WHERE user_id = $1 AND asset = $2
+                "#,
+            )
+            .bind(user_id)
+            .bind(alt_asset)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            return Ok(alt_account);
+        }
 
         Ok(account)
     }
@@ -102,18 +173,9 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let account = sqlx::query_as::<_, Account>(
-            r#"
-            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
-            FROM accounts
-            WHERE user_id = $1 AND asset = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .bind(asset)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let account = self
+            .fetch_account_for_update(&mut tx, user_id, asset)
+            .await?;
 
         let account = match account {
             Some(a) => a,
@@ -155,18 +217,9 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let account = sqlx::query_as::<_, Account>(
-            r#"
-            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
-            FROM accounts
-            WHERE user_id = $1 AND asset = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .bind(asset)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let account = self
+            .fetch_account_for_update(&mut tx, user_id, asset)
+            .await?;
 
         let account = match account {
             Some(a) => a,
@@ -226,18 +279,9 @@ impl AccountRepository for PostgresAccountRepository {
             }
         }
 
-        let account = sqlx::query_as::<_, Account>(
-            r#"
-            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
-            FROM accounts
-            WHERE user_id = $1 AND asset = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .bind(asset)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let account = self
+            .fetch_account_for_update(&mut tx, user_id, asset)
+            .await?;
 
         let mut account = match account {
             Some(a) => a,
@@ -439,18 +483,9 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<(Account, Uuid), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let account = sqlx::query_as::<_, Account>(
-            r#"
-            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
-            FROM accounts
-            WHERE user_id = $1 AND asset = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .bind(asset)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let account = self
+            .fetch_account_for_update(&mut tx, user_id, asset)
+            .await?;
 
         let mut account = match account {
             Some(a) => a,
@@ -532,18 +567,17 @@ impl AccountRepository for PostgresAccountRepository {
     ) -> Result<Account, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let mut account = sqlx::query_as::<_, Account>(
-            r#"
-            SELECT id, user_id, asset, balance, frozen, created_at, updated_at
-            FROM accounts
-            WHERE user_id = $1 AND asset = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .bind(asset)
-        .fetch_one(&mut *tx)
-        .await?;
+        let account = self
+            .fetch_account_for_update(&mut tx, user_id, asset)
+            .await?;
+
+        let mut account = match account {
+            Some(a) => a,
+            None => {
+                tx.rollback().await?;
+                return Err(RepositoryError::NotFound);
+            }
+        };
 
         account.balance += amount;
 
