@@ -13,7 +13,10 @@ pub async fn run() -> Result<()> {
     let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
     let redis_client = redis::Client::open(redis_url).expect("Failed to open Redis client");
 
-    let aggregator_service = Arc::new(AggregatorService::new(publisher, redis_client));
+    let market_url = std::env::var("MARKET_SERVICE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:50051".to_string());
+
+    let aggregator_service = Arc::new(AggregatorService::new(publisher, redis_client, market_url));
     let _state = AppState {
         config: Arc::new(config),
         aggregator_service: aggregator_service.clone(),

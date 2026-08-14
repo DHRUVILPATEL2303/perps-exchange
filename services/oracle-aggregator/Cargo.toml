@@ -20,3 +20,5 @@ errors = { path = "../../crates/errors" }
 sqlx = { workspace = true }
 rust_decimal = { workspace = true }
 async-trait = { workspace = true }
+proto = { path = "../../crates/proto" }
+tonic = { workspace = true }

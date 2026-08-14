@@ -12,6 +12,7 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 #[derive(Serialize, Deserialize)]
@@ -73,7 +74,7 @@ pub async fn run() -> std::io::Result<()> {
     let redis_url = format!("redis://{}:{}", config.redis.host, config.redis.port);
     let redis_client = redis::Client::open(redis_url).expect("Failed to open Redis client");
 
-    let ws_sessions = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    let ws_sessions = Arc::new(Mutex::new(HashMap::new()));
 
     let app_state = Data::new(AppState {
         config: Arc::new(config.clone()),
@@ -95,7 +96,10 @@ pub async fn run() -> std::io::Result<()> {
 
     let state_for_consumer = app_state.get_ref().clone();
     tokio::spawn(async move {
-        if let Err(e) = crate::infrastructure::kafka::trade_consumer::run_trade_consumer(state_for_consumer).await {
+        if let Err(e) =
+            crate::infrastructure::kafka::trade_consumer::run_trade_consumer(state_for_consumer)
+                .await
+        {
             tracing::error!("Trade Event Consumer crashed: {:?}", e);
         }
     });
