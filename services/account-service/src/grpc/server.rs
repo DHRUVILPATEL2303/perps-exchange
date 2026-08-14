@@ -49,7 +49,7 @@ impl GrpcAccountService for AccountGrpcService {
         let amount =
             Decimal::from_str(&req.amount).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
-        match self.service.lock_margin(user_id, "USDT", amount).await {
+        match self.service.lock_margin(user_id, "USDC", amount).await {
             Ok(_) => Ok(Response::new(LockMarginResponse {
                 success: true,
                 error_message: "".to_string(),
@@ -71,7 +71,7 @@ impl GrpcAccountService for AccountGrpcService {
         let amount =
             Decimal::from_str(&req.amount).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
-        match self.service.release_margin(user_id, "USDT", amount).await {
+        match self.service.release_margin(user_id, "USDC", amount).await {
             Ok(_) => Ok(Response::new(ReleaseMarginResponse { success: true })),
             Err(_) => Ok(Response::new(ReleaseMarginResponse { success: false })),
         }
@@ -104,7 +104,7 @@ impl GrpcAccountService for AccountGrpcService {
             .service
             .adjust_margin(
                 user_id,
-                "USDT",
+                "USDC",
                 amount,
                 &req.adjustment_type,
                 None,

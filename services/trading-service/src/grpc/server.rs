@@ -427,21 +427,27 @@ impl GrpcTradingService for TradingGrpcService {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let pb_positions = positions
-            .into_iter()
-            .map(|p| PositionInfo {
+        let mut pb_positions = Vec::new();
+        for p in positions {
+            let mark_price = self.price_tracker.get_price(&p.symbol).await.unwrap_or(p.entry_price);
+            let u_pnl = if p.side == "LONG" {
+                p.size * (mark_price - p.entry_price)
+            } else {
+                p.size * (p.entry_price - mark_price)
+            };
+            pb_positions.push(PositionInfo {
                 symbol: p.symbol,
                 side: p.side,
                 size: p.size.to_string(),
                 entry_price: p.entry_price.to_string(),
                 leverage: p.leverage.to_string(),
                 margin_mode: p.margin_mode,
-                unrealized_pnl: p.unrealized_pnl.to_string(),
+                unrealized_pnl: u_pnl.to_string(),
                 margin: p.margin.to_string(),
                 liquidation_price: p.liquidation_price.to_string(),
                 realized_pnl: p.realized_pnl.to_string(),
-            })
-            .collect();
+            });
+        }
 
         Ok(Response::new(GetPositionsResponse {
             positions: pb_positions,

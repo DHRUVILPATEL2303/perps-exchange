@@ -59,7 +59,7 @@ impl GrpcRiskService for RiskGrpcService {
 
         let balance_res = self
             .account_client
-            .get_balance(req.user_id.clone(), "USDT".to_string())
+            .get_balance(req.user_id.clone(), "USDC".to_string())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

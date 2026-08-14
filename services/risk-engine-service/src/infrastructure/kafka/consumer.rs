@@ -110,7 +110,7 @@ impl RiskConsumer {
             let mut margin_balance = margin + unrealized_pnl;
 
             if margin_mode == "CROSS" {
-                if let Ok(balance_res) = self.account_client.get_balance(user_id.to_string(), "USDT".to_string()).await {
+                if let Ok(balance_res) = self.account_client.get_balance(user_id.to_string(), "USDC".to_string()).await {
                     let avail_bal = Decimal::from_str(&balance_res.available_balance).unwrap_or(Decimal::ZERO);
                     margin_balance += avail_bal;
                 }
