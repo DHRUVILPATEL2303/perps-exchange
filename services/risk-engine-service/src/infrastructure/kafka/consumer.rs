@@ -64,7 +64,7 @@ impl RiskConsumer {
                 Ok(msg) => {
                     if let Some(payload) = msg.payload() {
                         if let Ok(tick) = serde_json::from_slice::<PriceFeedTick>(payload) {
-                            self.price_tracker.set_spot_price(tick.mark_price);
+                            self.price_tracker.set_spot_price(tick.symbol.clone(), tick.mark_price);
                             if let Err(e) = self.check_positions(tick).await {
                                 tracing::error!("Failed to check positions: {:?}", e);
                             }

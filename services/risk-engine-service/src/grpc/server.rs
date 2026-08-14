@@ -75,8 +75,6 @@ impl GrpcRiskService for RiskGrpcService {
         .await
         .map_err(|e| Status::internal(e.to_string()))?;
 
-        let (current_mark_price_opt, _) = self.price_tracker.get_prices();
-
         for pos in active_positions {
             let symbol: String = pos.get("symbol");
             let side: String = pos.get("side");
@@ -85,11 +83,7 @@ impl GrpcRiskService for RiskGrpcService {
             let pos_margin_mode: String = pos.get("margin_mode");
 
             if pos_margin_mode == "CROSS" {
-                let mark_price = if symbol == "BTCUSDT" {
-                    current_mark_price_opt.unwrap_or(entry_price)
-                } else {
-                    entry_price
-                };
+                let mark_price = self.price_tracker.get_spot_price(&symbol).unwrap_or(entry_price);
 
                 let u_pnl = if side == "LONG" {
                     size * (mark_price - entry_price)

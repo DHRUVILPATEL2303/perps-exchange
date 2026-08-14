@@ -1,33 +1,38 @@
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use rust_decimal::Decimal;
 
 #[derive(Clone, Default)]
 pub struct PriceTracker {
-    spot_price: Arc<Mutex<Option<Decimal>>>,
-    perp_price: Arc<Mutex<Option<Decimal>>>,
+    spot_prices: Arc<Mutex<HashMap<String, Decimal>>>,
+    perp_prices: Arc<Mutex<HashMap<String, Decimal>>>,
 }
 
 impl PriceTracker {
     pub fn new() -> Self {
         Self {
-            spot_price: Arc::new(Mutex::new(None)),
-            perp_price: Arc::new(Mutex::new(None)),
+            spot_prices: Arc::new(Mutex::new(HashMap::new())),
+            perp_prices: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub fn set_spot_price(&self, price: Decimal) {
-        let mut lock = self.spot_price.lock().unwrap();
-        *lock = Some(price);
+    pub fn set_spot_price(&self, symbol: String, price: Decimal) {
+        let mut lock = self.spot_prices.lock().unwrap();
+        lock.insert(symbol, price);
     }
 
-    pub fn set_perp_price(&self, price: Decimal) {
-        let mut lock = self.perp_price.lock().unwrap();
-        *lock = Some(price);
+    pub fn set_perp_price(&self, symbol: String, price: Decimal) {
+        let mut lock = self.perp_prices.lock().unwrap();
+        lock.insert(symbol, price);
     }
 
-    pub fn get_prices(&self) -> (Option<Decimal>, Option<Decimal>) {
-        let spot = *self.spot_price.lock().unwrap();
-        let perp = *self.perp_price.lock().unwrap();
-        (spot, perp)
+    pub fn get_spot_price(&self, symbol: &str) -> Option<Decimal> {
+        let lock = self.spot_prices.lock().unwrap();
+        lock.get(symbol).cloned()
+    }
+
+    pub fn get_perp_price(&self, symbol: &str) -> Option<Decimal> {
+        let lock = self.perp_prices.lock().unwrap();
+        lock.get(symbol).cloned()
     }
 }

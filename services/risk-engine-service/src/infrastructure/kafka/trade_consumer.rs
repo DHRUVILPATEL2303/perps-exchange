@@ -66,7 +66,7 @@ impl TradeConsumer {
                     if let Some(payload) = msg.payload() {
                         match serde_json::from_slice::<TradeEvent>(payload) {
                             Ok(event) => {
-                                self.price_tracker.set_perp_price(event.price);
+                                self.price_tracker.set_perp_price(event.symbol.clone(), event.price);
                                 if let Err(e) = self.process_trade(event).await {
                                     tracing::error!("Failed to mirror position: {:?}", e);
                                 }
